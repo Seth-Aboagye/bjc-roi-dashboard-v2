@@ -1,0 +1,33 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# Data files (VERY IMPORTANT for BJC privacy)
+*.csv
+*.xlsx
+*.xls
+*.xlsm
+*.pdf
+*.docx
+*.pptx
+
+# Local data folders
+data/
+uploads/
+data_sources/
+
+# Streamlit
+.streamlit/
+
+# OS files
+.DS_Store
+Thumbs.db

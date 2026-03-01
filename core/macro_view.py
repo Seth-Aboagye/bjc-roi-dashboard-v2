@@ -23,26 +23,32 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
     k = model["kpis"]
     forecast_df = model["forecast_df"]
 
-    total_rev = float(k["Total Revenue (3yr)"])
-    total_cost = float(k["Total Cost (3yr)"])
-    total_net = float(k["Total Net (3yr)"])
-    roi_mult = float(k["ROI Multiple (3yr)"])
-    roi_pct = float(k["ROI % (3yr)"])
-    c_per_1 = float(k["Cost per $1 (3yr)"])
+    total_rev = float(k.get("Total Revenue (3yr)", 0.0))
+    total_cost = float(k.get("Total Cost (3yr)", 0.0))
+    total_net = float(k.get("Total Net (3yr)", 0.0))
+    roi_mult = float(k.get("ROI Multiple (3yr)", 0.0))
+    c_per_1 = float(k.get("Cost per $1 (3yr)", 0.0))
+
+    # Some macro_model versions provide ROI % (3yr); make this robust.
+    # If not present, approximate ROI% = (ROI multiple - 1).
+    roi_pct = k.get("ROI % (3yr)", None)
+    if roi_pct is None:
+        roi_pct = max(roi_mult - 1.0, 0.0)
 
     # Trend assessment: improving or declining ROI by year (based on year-level ROI %)
-    # Note: forecast_df has ROI Multiple and ROI % columns from build_macro_forecast
     improving = False
     declining = False
     if "ROI %" in forecast_df.columns and len(forecast_df) >= 2:
         improving = float(forecast_df["ROI %"].iloc[-1]) > float(forecast_df["ROI %"].iloc[0])
         declining = float(forecast_df["ROI %"].iloc[-1]) < float(forecast_df["ROI %"].iloc[0])
+    elif "ROI Multiple" in forecast_df.columns and len(forecast_df) >= 2:
+        improving = float(forecast_df["ROI Multiple"].iloc[-1]) > float(forecast_df["ROI Multiple"].iloc[0])
+        declining = float(forecast_df["ROI Multiple"].iloc[-1]) < float(forecast_df["ROI Multiple"].iloc[0])
 
     # Budget assessment (if present)
     budget_note = ""
     if model.get("budget_df") is not None:
         b = model["budget_df"]
-        # Sum variances across years if available
         if all(col in b.columns for col in ["Revenue Var", "Cost Var", "Net Var"]):
             rev_var = float(b["Revenue Var"].sum())
             cost_var = float(b["Cost Var"].sum())
@@ -64,6 +70,7 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
     cost_growth = assumptions.get("Cost Growth", None)
     revenue_shock = assumptions.get("Revenue Shock", None)
     cost_shock = assumptions.get("Cost Shock", None)
+    acq_only = assumptions.get("Acquisition Cost Year 1 Only", None)
 
     # Build narrative
     lines = []
@@ -98,6 +105,12 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
         a_bits.append(f"Cost shock is **{cost_shock:+.0%}**")
     if a_bits:
         lines.append("Key assumptions: " + "; ".join(a_bits) + ".")
+
+    if acq_only is True:
+        lines.append(
+            "Cost structure assumes **Year 1 includes acquisition effort**, while **Years 2–3 reflect lower ongoing stewardship cost**, "
+            "adjusted only by the selected cost growth (and any cost shock)."
+        )
 
     if budget_note:
         lines.append(budget_note)
@@ -156,6 +169,13 @@ def macro_view():
     revenue_shock = c4.slider("Revenue Shock", -0.30, 0.30, float(revenue_shock), 0.01)
     cost_shock = c5.slider("Cost Shock", -0.30, 0.30, float(cost_shock), 0.01)
 
+    # NEW: Katie's cost structure update
+    st.subheader("Cost Structure (Macro)")
+    acq_only = st.checkbox(
+        "Apply Base Cost only in Year 1 (Years 2–3 use ongoing stewardship cost only, adjusted by Cost Growth)",
+        value=True
+    )
+
     inputs = MacroInputs(
         total_raised_y1=float(total_raised),
         base_cost_y1=float(base_cost),
@@ -165,6 +185,7 @@ def macro_view():
         margin=float(margin),
         cost_growth=float(cost_growth),
         cost_shock=float(cost_shock),
+        acquisition_cost_year1_only=bool(acq_only),  # NEW
     )
 
     st.divider()
@@ -196,7 +217,7 @@ def macro_view():
     k4.metric("ROI Multiple (3yr)", f"{k['ROI Multiple (3yr)']:.2f}x")
     k5.metric("Cost per $1 (3yr)", f"${k['Cost per $1 (3yr)']:.2f}")
 
-    # --- NEW: Tabs for Macro ---
+    # --- Tabs for Macro ---
     st.divider()
     t1, t2, t3 = st.tabs(["Charts", "Interpretation", "Budget & Variance"])
 
@@ -211,13 +232,12 @@ def macro_view():
         "Cost Growth": cost_growth,
         "Cost Shock": cost_shock,
         "Preset": preset,
+        "Acquisition Cost Year 1 Only": bool(acq_only),  # NEW
     }
 
     with t1:
         st.subheader("Additional Charts")
-        # 1) Trend chart
         st.plotly_chart(macro_3yr_trend_line(model["forecast_df"]), use_container_width=True)
-        # 2) ROI chart
         st.plotly_chart(macro_roi_bar(model["forecast_df"]), use_container_width=True)
 
         st.caption("Forecast table")
@@ -259,7 +279,7 @@ def macro_view():
         if model["budget_df"] is not None:
             model["budget_df"].to_excel(writer, sheet_name="Budget_Compare", index=False)
 
-        # NEW: Interpretation sheet
+        # Interpretation sheet
         pd.DataFrame([{"Interpretation": macro_interpretation(model, assumptions)}]).to_excel(
             writer, sheet_name="Interpretation", index=False
         )

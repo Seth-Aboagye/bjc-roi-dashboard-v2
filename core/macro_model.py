@@ -1,130 +1,179 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import Optional, Dict, Any, List
 import pandas as pd
 
-def safe_div(a: float, b: float) -> float:
-    return float(a) / float(b) if float(b) != 0 else 0.0
+from .utils import safe_div
+
 
 @dataclass
 class MacroInputs:
-    # Year-1 baseline
     total_raised_y1: float
     base_cost_y1: float
+    retention: float                 # e.g., 0.60
+    revenue_method: str              # "remaining" or "prior"
+    revenue_shock: float             # e.g., -0.10 to +0.10
+    margin: float                    # e.g., 0.20
+    cost_growth: float               # e.g., 0.05
+    cost_shock: float                # e.g., -0.05 to +0.05
 
-    # Revenue assumptions
-    retention: float = 0.60                 # 60%
-    revenue_method: str = "remaining"       # "remaining" or "prior"
-    revenue_shock: float = 0.00             # -0.20 to +0.20 (economic scenario adjustment)
+    # NEW: acquisition cost is only in year 1
+    acquisition_cost_year1_only: bool = True
 
-    # Cost assumptions
-    margin: float = 0.20                    # 20% dev margin
-    cost_growth: float = 0.05               # 5% annual growth on base cost
-    cost_shock: float = 0.00                # -0.20 to +0.20 (economic scenario adjustment)
 
-def forecast_revenue_3yr(total_raised_y1: float, retention: float, method: str, shock: float) -> pd.Series:
+def _build_revenue_series(y1_total: float, retention: float, method: str) -> list[float]:
     """
-    method:
-      - "remaining": Y2 = r * remaining; Y3 = r * remaining_after_Y2
-      - "prior":     Y2 = r * Y1; Y3 = r * Y2
-    shock: applies uniformly to Y2 and Y3 (and can apply to Y1 too if you want; here we keep Y1 at 100%)
+    Builds 3-year revenue series.
+    - method="remaining": Y2 = retention * remaining after Y1; Y3 = retention * remaining after Y2
+    - method="prior":     Y2 = retention * Y1; Y3 = retention * Y2
     """
-    y1 = float(total_raised_y1)
+    y1 = float(y1_total)
 
     if method == "prior":
         y2 = retention * y1
         y3 = retention * y2
+        return [y1, y2, y3]
+
+    # default: "remaining"
+    remaining_after_y1 = max(y1_total - y1, 0.0)  # typically 0 in this simplified model
+    # Note: If you interpret Y1 as "100% realized this year" and the rest is "unrealized future",
+    # you should input total_raised_y1 as the *full pledge/expected* amount, not just cash received.
+    y2 = retention * remaining_after_y1
+    remaining_after_y2 = max(remaining_after_y1 - y2, 0.0)
+    y3 = retention * remaining_after_y2
+    return [y1, y2, y3]
+
+
+def _apply_shock(values: list[float], shock: float) -> list[float]:
+    """Applies a multiplicative shock: +10% => 1.10, -10% => 0.90."""
+    mult = 1.0 + float(shock)
+    return [v * mult for v in values]
+
+
+def build_macro_forecast(inputs: MacroInputs, budget_df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+    # -----------------------
+    # Revenue (3-year)
+    # -----------------------
+    revenue = _build_revenue_series(
+        y1_total=inputs.total_raised_y1,
+        retention=inputs.retention,
+        method=inputs.revenue_method,
+    )
+    revenue = _apply_shock(revenue, inputs.revenue_shock)
+
+    # -----------------------
+    # Cost (3-year) — UPDATED LOGIC
+    # -----------------------
+    base = float(inputs.base_cost_y1)
+    margin = float(inputs.margin)
+    g = float(inputs.cost_growth)
+
+    # Year 1: acquisition + overhead margin
+    y1_cost = base + (base * margin)
+
+    if inputs.acquisition_cost_year1_only:
+        # Years 2–3: ONLY "maintenance/stewardship" (use margin portion), growing each year
+        sustain_base = base * margin
+        y2_cost = sustain_base * (1.0 + g)
+        y3_cost = sustain_base * ((1.0 + g) ** 2)
+        cost = [y1_cost, y2_cost, y3_cost]
     else:
-        remaining = y1
-        y2 = retention * remaining
-        remaining = remaining - y2
-        y3 = retention * remaining
+        # Legacy behavior (if you ever want it): full cost continues and grows each year
+        cost = [
+            y1_cost,
+            y1_cost * (1.0 + g),
+            y1_cost * ((1.0 + g) ** 2),
+        ]
 
-    # Apply economic/business scenario shock to projected years (optional policy)
-    y2 = y2 * (1.0 + shock)
-    y3 = y3 * (1.0 + shock)
+    cost = _apply_shock(cost, inputs.cost_shock)
 
-    return pd.Series([y1, y2, y3], index=["Year 1", "Year 2", "Year 3"], name="Revenue")
-
-def forecast_cost_3yr(base_cost_y1: float, margin: float, cost_growth: float, shock: float) -> pd.Series:
-    """
-    Cost model requested:
-      Year 1 = base_cost * (1 + margin)
-      Year 2 = base_cost*(1+growth) * (1+margin)
-      Year 3 = base_cost*(1+growth)^2 * (1+margin)
-    shock: applies to Y2 and Y3 (optional), or to all years—here we apply to all for simplicity.
-    """
-    c0 = float(base_cost_y1)
-
-    y1 = c0 * (1.0 + margin)
-    y2 = (c0 * (1.0 + cost_growth)) * (1.0 + margin)
-    y3 = (c0 * (1.0 + cost_growth) ** 2) * (1.0 + margin)
-
-    # Apply cost shock (inflation, wage pressure, etc.)
-    y1 = y1 * (1.0 + shock)
-    y2 = y2 * (1.0 + shock)
-    y3 = y3 * (1.0 + shock)
-
-    return pd.Series([y1, y2, y3], index=["Year 1", "Year 2", "Year 3"], name="Cost")
-
-def build_macro_forecast(inputs: MacroInputs, budget_df: pd.DataFrame | None = None) -> dict:
-    revenue = forecast_revenue_3yr(
-        inputs.total_raised_y1, inputs.retention, inputs.revenue_method, inputs.revenue_shock
+    # -----------------------
+    # Forecast frame
+    # -----------------------
+    years = ["Year 1", "Year 2", "Year 3"]
+    df = pd.DataFrame(
+        {
+            "Year": years,
+            "Revenue": revenue,
+            "Cost": cost,
+        }
     )
-    cost = forecast_cost_3yr(
-        inputs.base_cost_y1, inputs.margin, inputs.cost_growth, inputs.cost_shock
-    )
-
-    df = pd.DataFrame({"Year": revenue.index, "Revenue": revenue.values, "Cost": cost.values})
     df["Net"] = df["Revenue"] - df["Cost"]
-    df["ROI Multiple"] = df.apply(lambda r: safe_div(r["Revenue"], r["Cost"]), axis=1)
-    df["ROI %"] = df.apply(lambda r: safe_div(r["Revenue"] - r["Cost"], r["Cost"]), axis=1)
-    df["Cost per $1"] = df.apply(lambda r: safe_div(r["Cost"], r["Revenue"]), axis=1)
+    df["ROI Multiple"] = df.apply(lambda r: safe_div(r["Revenue"], r["Cost"]) if r["Cost"] else 0.0, axis=1)
 
-    # 3-year totals
+    # -----------------------
+    # KPIs
+    # -----------------------
     total_rev = float(df["Revenue"].sum())
     total_cost = float(df["Cost"].sum())
-    total_net = total_rev - total_cost
+    total_net = float(df["Net"].sum())
 
     kpis = {
         "Total Revenue (3yr)": total_rev,
         "Total Cost (3yr)": total_cost,
         "Total Net (3yr)": total_net,
         "ROI Multiple (3yr)": safe_div(total_rev, total_cost),
-        "ROI % (3yr)": safe_div(total_net, total_cost),
         "Cost per $1 (3yr)": safe_div(total_cost, total_rev),
     }
 
-    # Budget integration (optional)
+    # -----------------------
+    # Budget compare (optional)
+    # Expected columns: Year, Revenue, Cost (budget)
+    # -----------------------
     budget_out = None
     if budget_df is not None and len(budget_df) > 0:
-        # Expect columns: Year, Budget Revenue, Budget Cost
         b = budget_df.copy()
-        b["Year"] = b["Year"].astype(str)
-        merged = df.merge(b, on="Year", how="left")
-        merged["Revenue Var"] = merged["Revenue"] - merged["Budget Revenue"]
-        merged["Cost Var"] = merged["Cost"] - merged["Budget Cost"]
-        merged["Budget Net"] = merged["Budget Revenue"] - merged["Budget Cost"]
-        merged["Net Var"] = merged["Net"] - merged["Budget Net"]
+        b.columns = [str(c).strip() for c in b.columns]
+
+        # normalize year labels to match
+        if "Year" in b.columns:
+            b["Year"] = b["Year"].astype(str).str.strip()
+
+        # merge forecast with budget
+        merged = pd.merge(
+            df[["Year", "Revenue", "Cost", "Net"]],
+            b,
+            on="Year",
+            how="left",
+            suffixes=("", "_Budget"),
+        )
+
+        # If budget has these columns
+        if "Revenue_Budget" in merged.columns:
+            merged["Revenue Var"] = merged["Revenue"] - merged["Revenue_Budget"]
+        if "Cost_Budget" in merged.columns:
+            merged["Cost Var"] = merged["Cost"] - merged["Cost_Budget"]
+        if "Net_Budget" in merged.columns:
+            merged["Net Var"] = merged["Net"] - merged["Net_Budget"]
+
         budget_out = merged
 
-    # Recommendations (simple, practical rules)
-    recs = []
-    if total_cost <= 0:
-        recs.append("Enter a Base Cost greater than 0 to compute ROI.")
+    # -----------------------
+    # Recommendations (simple rules)
+    # -----------------------
+    recs: List[str] = []
+
+    if kpis["ROI Multiple (3yr)"] < 1.0:
+        recs.append("3-year ROI is below 1.0x — consider reducing Year 1 acquisition cost, improving retention, or rebalancing channels toward higher-return sources.")
     else:
-        roi_mult = kpis["ROI Multiple (3yr)"]
-        c_per_1 = kpis["Cost per $1 (3yr)"]
+        recs.append("3-year ROI is above 1.0x — strategy appears sustainable under current assumptions; consider scaling what’s working.")
 
-        if roi_mult < 1.0:
-            recs.append("3-year ROI multiple is below 1.0x (costs exceed projected revenue impact). Consider reducing development margin, lowering cost growth, or focusing on higher-yield fundraising activities (e.g., major donors).")
-        elif roi_mult < 2.0:
-            recs.append("3-year ROI is positive but moderate. Prioritize segments/campaigns with lower cost per $1 raised, and test a conservative scenario for planning.")
-        else:
-            recs.append("3-year ROI looks strong under current assumptions. Consider scaling the most effective development activities while monitoring cost growth and retention sensitivity.")
+    if inputs.retention < 0.55:
+        recs.append("Retention is relatively low — stewardship strategies (recurring gifts, donor journeys, major-donor follow-up) may produce outsized improvements.")
 
-        if c_per_1 > 0.50:
-            recs.append("Cost per $1 raised is relatively high. Consider shifting effort toward major donor engagement or channels with higher efficiency.")
+    if inputs.cost_growth > 0.10:
+        recs.append("Cost growth is high — consider tighter budget controls or shifting effort toward lower-cost fundraising mechanisms.")
 
-    recs.append("Use scenario presets (Base / Conservative / Optimistic) to support budgeting and strategic planning conversations.")
+    if inputs.revenue_shock < 0:
+        recs.append("Revenue shock is negative — use Conservative scenario as a planning baseline and build a contingency plan.")
 
-    return {"forecast_df": df, "kpis": kpis, "budget_df": budget_out, "recommendations": recs}
+    if inputs.acquisition_cost_year1_only:
+        recs.append("Model assumes Year 2–3 costs are primarily stewardship/maintenance (not full acquisition), aligned with donor retention strategy.")
+
+    return {
+        "forecast_df": df,
+        "kpis": kpis,
+        "budget_df": budget_out,
+        "recommendations": recs,
+    }

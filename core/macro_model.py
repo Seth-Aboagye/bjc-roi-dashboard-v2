@@ -1,173 +1,371 @@
 from __future__ import annotations
-from dataclasses import dataclass
+import streamlit as st
 import pandas as pd
+import io
 
-def _safe_div(a: float, b: float) -> float:
-    return float(a) / float(b) if b not in (0, None) else 0.0
+from .macro_model import MacroInputs, build_macro_forecast
+from .budget_templates import budget_template_excel
+from .reports_pdf import build_macro_pdf
 
-@dataclass
-class MacroInputs:
-    total_raised_y1: float
-    base_cost_y1: float
-    retention: float = 0.60
-    revenue_method: str = "prior"   # "prior" is Katie’s model
-    revenue_shock: float = 0.0
+from .charts import (
+    macro_3yr_trend_line,
+    macro_roi_bar,
+    macro_budget_vs_forecast_bar,
+    macro_variance_bars,
+    macro_revenue_allocation_chart,
+    macro_scenario_comparison_chart,
+    macro_roi_sensitivity_heatmap,
+)
 
-    margin: float = 0.20
-    cost_growth: float = 0.05
-    cost_shock: float = 0.0
 
-    # NEW: Katie update
-    acquisition_cost_year1_only: bool = True
+def macro_interpretation(model: dict, assumptions: dict) -> str:
+    k = model.get("kpis", {}) or {}
+    f = model.get("forecast_df")
 
-def _build_revenue_series(total_raised_y1: float, retention: float, method: str, revenue_shock: float) -> list[float]:
-    """
-    Revenue impact (macro):
-    - prior (Katie): Y2 = retention * Y1, Y3 = retention * Y2
-    - remaining: Y2 = retention * remaining_after_Y1, Y3 = retention * remaining_after_Y2
-      (Note: if remaining_after_Y1 is 0, revenues will be 0)
-    """
-    y1 = float(total_raised_y1)
-    method = (method or "prior").strip().lower()
+    total_rev = float(k.get("Total Revenue (3yr)", 0.0))
+    total_cost = float(k.get("Total Cost (3yr)", 0.0))
+    total_net = float(k.get("Total Net (3yr)", 0.0))
+    roi_mult = float(k.get("ROI Multiple (3yr)", 0.0))
+    roi_pct = float(k.get("ROI % (3yr)", roi_mult - 1.0))
+    c_per_1 = float(k.get("Cost per $1 (3yr)", 0.0))
 
-    if method == "remaining":
-        remaining = max(y1 - y1, 0.0)  # after taking 100% in year 1, remaining becomes 0 by definition
-        y2 = retention * remaining
-        remaining2 = max(remaining - y2, 0.0)
-        y3 = retention * remaining2
-    else:
-        # default / Katie model
-        y2 = retention * y1
-        y3 = retention * y2
+    # Budget note
+    budget_note = ""
+    b = model.get("budget_df")
+    if b is not None and all(col in b.columns for col in ["Revenue Var", "Cost Var", "Net Var"]):
+        rev_var = float(b["Revenue Var"].sum())
+        cost_var = float(b["Cost Var"].sum())
+        net_var = float(b["Net Var"].sum())
 
-    # Apply revenue shock to Y2/Y3 (not Y1) to model environment changes
-    y2 = y2 * (1.0 + revenue_shock)
-    y3 = y3 * (1.0 + revenue_shock)
+        def _fmt(x: float) -> str:
+            sign = "+" if x >= 0 else "-"
+            return f"{sign}${abs(x):,.0f}"
 
-    return [y1, y2, y3]
+        budget_note = (
+            f"Against the uploaded budget, the 3-year forecast shows "
+            f"**Revenue variance {_fmt(rev_var)}**, **Cost variance {_fmt(cost_var)}**, "
+            f"and **Net variance {_fmt(net_var)}** (Forecast − Budget)."
+        )
 
-def _build_cost_series(
-    base_cost_y1: float,
-    margin: float,
-    cost_growth: float,
-    cost_shock: float,
-    acquisition_cost_year1_only: bool
-) -> list[float]:
-    """
-    Cost (macro):
-    - If acquisition_cost_year1_only=True (Katie):
-        Year 1 cost = base_cost * (1 + margin)   (full acquisition effort + development margin)
-        Years 2–3 cost = ONLY the margin portion (stewardship/development), grown by cost_growth
-            Y2 = (base_cost * margin) * (1+cost_growth)
-            Y3 = (base_cost * margin) * (1+cost_growth)^2
-      Then apply cost_shock to Y2/Y3.
-    - Else (legacy macro):
-        Costs grow on the full cost base each year:
-            Y1 = base_cost*(1+margin)
-            Y2 = Y1*(1+cost_growth)
-            Y3 = Y2*(1+cost_growth)
-      Then apply cost_shock to Y2/Y3.
-    """
-    base_cost_y1 = float(base_cost_y1)
-    margin = float(margin)
-    cost_growth = float(cost_growth)
-    cost_shock = float(cost_shock)
+    y1_real = assumptions.get("Year 1 Realization Rate", None)
+    carry = assumptions.get("Carryover Factor", None)
+    margin = assumptions.get("Development Margin (Y1 only)", None)
+    cg = assumptions.get("Cost Growth Add-on (Y2 & Y3)", None)
 
-    y1 = base_cost_y1 * (1.0 + margin)
-
-    if acquisition_cost_year1_only:
-        stewardship_base = base_cost_y1 * margin  # only “margin” portion continues
-        y2 = stewardship_base * (1.0 + cost_growth)
-        y3 = stewardship_base * ((1.0 + cost_growth) ** 2)
-    else:
-        y2 = y1 * (1.0 + cost_growth)
-        y3 = y2 * (1.0 + cost_growth)
-
-    # Apply cost shock to ongoing years only
-    y2 = y2 * (1.0 + cost_shock)
-    y3 = y3 * (1.0 + cost_shock)
-
-    return [y1, y2, y3]
-
-def build_macro_forecast(inputs: MacroInputs, budget_df: pd.DataFrame | None = None) -> dict:
-    years = ["Year 1", "Year 2", "Year 3"]
-
-    revenue = _build_revenue_series(
-        total_raised_y1=inputs.total_raised_y1,
-        retention=inputs.retention,
-        method=inputs.revenue_method,
-        revenue_shock=inputs.revenue_shock,
+    lines = []
+    lines.append(
+        f"This Macro View is a **strategic planning allocation**: it spreads the current-year fundraising pool "
+        f"across the current year and the next two years to support budgeting and operational planning."
+    )
+    lines.append(
+        f"Over the 3-year horizon, the model projects **${total_rev:,.0f}** in planned revenue allocation against "
+        f"**${total_cost:,.0f}** in modeled cost, resulting in a net of **${total_net:,.0f}**."
+    )
+    lines.append(
+        f"That corresponds to an overall **ROI of {roi_mult:.2f}x** (approximately **{roi_pct*100:,.1f}%**) "
+        f"and a **cost per $1 of ${c_per_1:.2f}**."
     )
 
-    cost = _build_cost_series(
-        base_cost_y1=inputs.base_cost_y1,
-        margin=inputs.margin,
-        cost_growth=inputs.cost_growth,
-        cost_shock=inputs.cost_shock,
-        acquisition_cost_year1_only=inputs.acquisition_cost_year1_only,
-    )
+    a_bits = []
+    if y1_real is not None:
+        a_bits.append(f"Year 1 realization = **{float(y1_real):.0%}**")
+    if carry is not None:
+        a_bits.append(f"Carryover factor = **{float(carry):.0%}**")
+    if margin is not None:
+        a_bits.append(f"Development margin (Y1 only) = **{float(margin):.0%}**")
+    if cg is not None:
+        a_bits.append(f"Cost growth add-on (Y2 & Y3) = **{float(cg):.0%} of base cost per year**")
+    if a_bits:
+        lines.append("Key assumptions: " + "; ".join(a_bits) + ".")
 
-    df = pd.DataFrame({"Year": years, "Revenue": revenue, "Cost": cost})
-    df["Net"] = df["Revenue"] - df["Cost"]
+    if budget_note:
+        lines.append(budget_note)
 
-    # ROI multiple per year (Revenue / Cost)
-    df["ROI Multiple"] = df.apply(lambda r: _safe_div(r["Revenue"], r["Cost"]), axis=1)
-    df["ROI %"] = df["ROI Multiple"] - 1.0
+    if roi_mult < 1.0:
+        lines.append("This scenario indicates costs exceed the allocated 3-year revenue impact; consider lowering Year-1 margin, improving allocation assumptions, or tightening cost growth.")
+    elif roi_mult < 2.0:
+        lines.append("This scenario indicates a positive but moderate return; efficiency gains and disciplined cost growth would strengthen net impact.")
+    else:
+        lines.append("This scenario indicates strong returns; the priority becomes maintaining discipline as the organization scales activities.")
 
-    total_rev = float(df["Revenue"].sum())
-    total_cost = float(df["Cost"].sum())
-    total_net = float(df["Net"].sum())
-    roi_mult = _safe_div(total_rev, total_cost)
+    return "\n\n".join(lines)
 
-    kpis = {
-        "Total Revenue (3yr)": total_rev,
-        "Total Cost (3yr)": total_cost,
-        "Total Net (3yr)": total_net,
-        "ROI Multiple (3yr)": roi_mult,
-        "ROI % (3yr)": roi_mult - 1.0,
-        # IMPORTANT: always include cost per $1 to prevent KeyError
-        "Cost per $1 (3yr)": _safe_div(total_cost, total_rev),
-    }
 
-    # Budget compare (optional)
-    budget_out = None
-    if budget_df is not None and len(budget_df) > 0:
-        b = budget_df.copy()
-        b.columns = [str(c).strip() for c in b.columns]
+def _build_sensitivity_pivot(base_inputs: MacroInputs) -> pd.DataFrame:
+    """
+    Build ROI Multiple heatmap across Carryover Factor (rows) and Cost Growth (cols).
+    Keeps everything else fixed.
+    """
+    carry_vals = [round(x, 2) for x in [0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]]
+    cg_vals = [round(x, 2) for x in [0.00, 0.02, 0.05, 0.08, 0.10, 0.15, 0.20]]
 
-        # Expect Year, Budget Revenue, Budget Cost (but tolerate common variants)
-        col_year = next((c for c in b.columns if c.lower() == "year"), None)
-        col_brev = next((c for c in b.columns if c.lower() in ("budget revenue", "budget_revenue", "revenue_budget")), None)
-        col_bcost = next((c for c in b.columns if c.lower() in ("budget cost", "budget_cost", "cost_budget")), None)
-
-        if col_year and col_brev and col_bcost:
-            b = b[[col_year, col_brev, col_bcost]].rename(
-                columns={col_year: "Year", col_brev: "Budget Revenue", col_bcost: "Budget Cost"}
+    rows = []
+    for carry in carry_vals:
+        for cg in cg_vals:
+            test_inputs = MacroInputs(
+                total_raised_y1=base_inputs.total_raised_y1,
+                year1_realization=base_inputs.year1_realization,
+                carryover_factor=carry,
+                base_cost_y1=base_inputs.base_cost_y1,
+                margin=base_inputs.margin,
+                cost_growth=cg,
+                revenue_shock=base_inputs.revenue_shock,
+                cost_shock=base_inputs.cost_shock,
             )
-            # merge forecast
-            m = pd.merge(b, df[["Year", "Revenue", "Cost", "Net"]], on="Year", how="left").fillna(0)
-            m["Budget Net"] = m["Budget Revenue"] - m["Budget Cost"]
+            m = build_macro_forecast(test_inputs)
+            roi = float(m["kpis"].get("ROI Multiple (3yr)", 0.0))
+            rows.append({"Carryover": carry, "CostGrowth": cg, "ROI": roi})
 
-            m["Revenue Var"] = m["Revenue"] - m["Budget Revenue"]
-            m["Cost Var"] = m["Cost"] - m["Budget Cost"]
-            m["Net Var"] = m["Net"] - m["Budget Net"]
-            budget_out = m
+    df = pd.DataFrame(rows)
+    pivot = df.pivot(index="Carryover", columns="CostGrowth", values="ROI").sort_index()
+    return pivot
 
-    # Recommendations (simple, readable)
-    recs = []
-    if kpis["ROI Multiple (3yr)"] < 1.0:
-        recs.append("Overall ROI is below 1.0x (costs exceed returns). Re-check retention, reduce acquisition cost, or focus more on high-yield donor segments.")
-    elif kpis["ROI Multiple (3yr)"] < 2.0:
-        recs.append("ROI is positive but moderate. Improving retention and controlling ongoing stewardship cost would materially improve net resources.")
-    else:
-        recs.append("ROI is strong. Consider scaling the strategies producing the highest retained revenue while monitoring cost growth assumptions.")
 
-    if inputs.revenue_method == "remaining":
-        recs.append("Revenue Method is set to 'remaining'. If Year 2 and Year 3 show $0, switch to 'prior' to model 60% of prior-year retained revenue (Katie’s approach).")
+def macro_view():
+    st.header("Macro 3-Year Strategic View (Investment Forecasting + Budget Comparison)")
+    st.caption(
+        "Strategic planning tool: allocate the current-year fundraising pool across the current year and the next two years. "
+        "This is a rolling approach—update inputs each year based on actual results and new expectations."
+    )
 
-    return {
-        "forecast_df": df,
-        "kpis": kpis,
-        "budget_df": budget_out,
-        "recommendations": recs,
+    # Presets
+    st.subheader("Scenario Presets")
+    preset = st.selectbox("Preset", ["Base", "Conservative", "Optimistic", "Custom"], index=0)
+
+    # Defaults
+    year1_realization = 0.40
+    carryover = 0.60
+    margin = 0.20
+    cost_growth = 0.05
+    revenue_shock = 0.00
+    cost_shock = 0.00
+
+    if preset == "Conservative":
+        year1_realization = 0.30
+        carryover = 0.50
+        margin = 0.25
+        cost_growth = 0.08
+        revenue_shock = -0.03
+        cost_shock = +0.03
+    elif preset == "Optimistic":
+        year1_realization = 0.50
+        carryover = 0.70
+        margin = 0.15
+        cost_growth = 0.03
+        revenue_shock = +0.03
+        cost_shock = 0.00
+
+    colA, colB = st.columns(2)
+    total_raised = colA.number_input(
+        "Total Raised (Current Year Pool)",
+        min_value=0.0,
+        value=250000.0,
+        step=5000.0
+    )
+    base_cost = colB.number_input(
+        "Base Cost (BJC Total Cost in Current Year)",
+        min_value=0.0,
+        value=150000.0,
+        step=5000.0
+    )
+
+    st.subheader("Adjustable Assumptions (update anytime)")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    year1_realization = c1.slider("Year 1 Realization Rate", 0.0, 1.0, float(year1_realization), 0.05)
+    carryover = c2.slider("Carryover Factor (of remaining)", 0.0, 1.0, float(carryover), 0.05)
+    margin = c3.slider("Development Margin (Year 1 only)", 0.0, 0.50, float(margin), 0.01)
+    cost_growth = c4.slider("Cost Growth Add-on (Y2 & Y3, % of base cost)", 0.0, 0.25, float(cost_growth), 0.01)
+    revenue_shock = c5.slider("Revenue Shock (applies to all years)", -0.30, 0.30, float(revenue_shock), 0.01)
+
+    with st.expander("Advanced"):
+        cost_shock = st.slider("Cost Shock (applies to all years)", -0.30, 0.30, float(cost_shock), 0.01)
+
+    inputs = MacroInputs(
+        total_raised_y1=float(total_raised),
+        year1_realization=float(year1_realization),
+        carryover_factor=float(carryover),
+        base_cost_y1=float(base_cost),
+        margin=float(margin),
+        cost_growth=float(cost_growth),
+        revenue_shock=float(revenue_shock),
+        cost_shock=float(cost_shock),
+    )
+
+    # Budget upload
+    st.divider()
+    st.subheader("Budget Comparison (optional)")
+    st.download_button(
+        "Download Budget Template (Excel)",
+        data=budget_template_excel(),
+        file_name="bjc_budget_template.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    budget_file = st.file_uploader("Upload Budget (Excel or CSV)", type=["xlsx", "csv"])
+    budget_df = None
+    if budget_file is not None:
+        if budget_file.name.lower().endswith(".csv"):
+            budget_df = pd.read_csv(budget_file)
+        else:
+            budget_df = pd.read_excel(budget_file)
+        budget_df.columns = [str(c).strip() for c in budget_df.columns]
+
+    # Base model
+    model = build_macro_forecast(inputs, budget_df=budget_df)
+    k = model["kpis"]
+
+    # KPIs (safe keys already ensured by macro_model)
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Total Revenue (3yr)", f"${float(k['Total Revenue (3yr)']):,.0f}")
+    k2.metric("Total Cost (3yr)", f"${float(k['Total Cost (3yr)']):,.0f}")
+    k3.metric("Total Net (3yr)", f"${float(k['Total Net (3yr)']):,.0f}")
+    k4.metric("ROI Multiple (3yr)", f"{float(k['ROI Multiple (3yr)']):.2f}x")
+    k5.metric("Cost per $1 (3yr)", f"${float(k['Cost per $1 (3yr)']):.2f}")
+
+    # Tabs
+    st.divider()
+    t1, t2, t3 = st.tabs(["Charts", "Interpretation", "Budget & Variance"])
+
+    assumptions = {
+        "Total Raised (Year 1 Pool)": total_raised,
+        "Base Cost (Year 1)": base_cost,
+        "Year 1 Realization Rate": year1_realization,
+        "Carryover Factor": carryover,
+        "Development Margin (Y1 only)": margin,
+        "Cost Growth Add-on (Y2 & Y3)": cost_growth,
+        "Revenue Shock": revenue_shock,
+        "Cost Shock": cost_shock,
+        "Preset": preset,
     }
+
+    # Scenario models for comparison (simple +/- adjustments)
+    conservative_inputs = MacroInputs(
+        total_raised_y1=inputs.total_raised_y1,
+        year1_realization=max(inputs.year1_realization - 0.10, 0.0),
+        carryover_factor=max(inputs.carryover_factor - 0.10, 0.0),
+        base_cost_y1=inputs.base_cost_y1,
+        margin=min(inputs.margin + 0.05, 0.50),
+        cost_growth=min(inputs.cost_growth + 0.03, 0.25),
+        revenue_shock=-0.03,
+        cost_shock=+0.03,
+    )
+    optimistic_inputs = MacroInputs(
+        total_raised_y1=inputs.total_raised_y1,
+        year1_realization=min(inputs.year1_realization + 0.10, 1.0),
+        carryover_factor=min(inputs.carryover_factor + 0.10, 1.0),
+        base_cost_y1=inputs.base_cost_y1,
+        margin=max(inputs.margin - 0.05, 0.0),
+        cost_growth=max(inputs.cost_growth - 0.02, 0.0),
+        revenue_shock=+0.03,
+        cost_shock=0.00,
+    )
+    conservative_model = build_macro_forecast(conservative_inputs)
+    optimistic_model = build_macro_forecast(optimistic_inputs)
+
+    scenarios_df = pd.DataFrame([
+        {
+            "Scenario": "Conservative",
+            "Total Revenue": conservative_model["kpis"]["Total Revenue (3yr)"],
+            "Total Cost": conservative_model["kpis"]["Total Cost (3yr)"],
+            "Net": conservative_model["kpis"]["Total Net (3yr)"],
+            "ROI Multiple": conservative_model["kpis"]["ROI Multiple (3yr)"],
+        },
+        {
+            "Scenario": "Base",
+            "Total Revenue": model["kpis"]["Total Revenue (3yr)"],
+            "Total Cost": model["kpis"]["Total Cost (3yr)"],
+            "Net": model["kpis"]["Total Net (3yr)"],
+            "ROI Multiple": model["kpis"]["ROI Multiple (3yr)"],
+        },
+        {
+            "Scenario": "Optimistic",
+            "Total Revenue": optimistic_model["kpis"]["Total Revenue (3yr)"],
+            "Total Cost": optimistic_model["kpis"]["Total Cost (3yr)"],
+            "Net": optimistic_model["kpis"]["Total Net (3yr)"],
+            "ROI Multiple": optimistic_model["kpis"]["ROI Multiple (3yr)"],
+        },
+    ])
+
+    with t1:
+        st.subheader("Revenue Allocation (Strategic Planning)")
+        st.plotly_chart(macro_revenue_allocation_chart(model["forecast_df"]), use_container_width=True)
+
+        st.subheader("Scenario Comparison")
+        st.plotly_chart(macro_scenario_comparison_chart(scenarios_df), use_container_width=True)
+        st.dataframe(scenarios_df, use_container_width=True)
+
+        st.subheader("ROI Sensitivity Map")
+        pivot = _build_sensitivity_pivot(inputs)
+        st.plotly_chart(
+            macro_roi_sensitivity_heatmap(pivot, "ROI Sensitivity (3yr): Carryover Factor vs Cost Growth"),
+            use_container_width=True
+        )
+        st.caption("This heatmap shows how ROI changes when carryover and cost growth assumptions shift.")
+
+        st.subheader("Forecast Trend & ROI by Year")
+        st.plotly_chart(macro_3yr_trend_line(model["forecast_df"]), use_container_width=True)
+        st.plotly_chart(macro_roi_bar(model["forecast_df"]), use_container_width=True)
+
+        st.caption("Forecast table")
+        st.dataframe(model["forecast_df"], use_container_width=True)
+
+    with t2:
+        st.subheader("Interpretation")
+        st.markdown(macro_interpretation(model, assumptions))
+
+        st.subheader("Model Recommendations")
+        for r in model.get("recommendations", []):
+            st.write(f"• {r}")
+
+    with t3:
+        if model.get("budget_df") is None:
+            st.info("Upload a budget file to enable Budget vs Forecast and variance charts.")
+        else:
+            b = model["budget_df"]
+            st.subheader("Budget vs Forecast")
+            st.plotly_chart(macro_budget_vs_forecast_bar(b), use_container_width=True)
+
+            st.subheader("Variance vs Budget (Forecast - Budget)")
+            st.plotly_chart(macro_variance_bars(b), use_container_width=True)
+
+            st.caption("Budget comparison table")
+            st.dataframe(b, use_container_width=True)
+
+    # Downloads
+    st.divider()
+    st.subheader("Download Reports")
+
+    excel_out = io.BytesIO()
+    with pd.ExcelWriter(excel_out, engine="xlsxwriter") as writer:
+        pd.DataFrame([assumptions]).to_excel(writer, sheet_name="Assumptions", index=False)
+        pd.DataFrame([model["kpis"]]).to_excel(writer, sheet_name="KPIs", index=False)
+        model["forecast_df"].to_excel(writer, sheet_name="Forecast", index=False)
+        scenarios_df.to_excel(writer, sheet_name="Scenarios", index=False)
+        pivot.reset_index().to_excel(writer, sheet_name="Sensitivity", index=False)
+        if model.get("budget_df") is not None:
+            model["budget_df"].to_excel(writer, sheet_name="Budget_Compare", index=False)
+
+        pd.DataFrame([{"Interpretation": macro_interpretation(model, assumptions)}]).to_excel(
+            writer, sheet_name="Interpretation", index=False
+        )
+
+    st.download_button(
+        "Download Excel (Macro Forecast + Scenarios + Sensitivity)",
+        data=excel_out.getvalue(),
+        file_name="bjc_macro_forecast_scenarios_sensitivity.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    pdf_bytes = build_macro_pdf(
+        title="BJC 3-Year Strategic Planning Forecast (Macro View)",
+        kpis=model["kpis"],
+        assumptions=assumptions,
+        recs=model.get("recommendations", []),
+        forecast_df=model["forecast_df"],
+    )
+    st.download_button(
+        "Download PDF (Executive Summary)",
+        data=pdf_bytes,
+        file_name="bjc_macro_forecast_summary.pdf",
+        mime="application/pdf",
+    )

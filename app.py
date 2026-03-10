@@ -1,17 +1,21 @@
 import pandas as pd
 import streamlit as st
 from datetime import datetime
+import traceback
 
-# Micro dependencies (existing)
+# Micro dependencies
 from core.utils import normalize_columns, ensure_datetime, segment_donors_basic, month_floor
 from core.metrics import compute_kpis, compute_rollups
 from core.charts import line_trend, bar_compare, waterfall_net, donor_mix_pie
 
-# Macro view (new)
+# Macro view import with real error capture
+macro_view = None
+macro_import_error = None
+
 try:
     from core.macro_view import macro_view
 except Exception:
-    macro_view = None  # prevents app from crashing if macro module isn't present yet
+    macro_import_error = traceback.format_exc()
 
 
 st.set_page_config(page_title="BJC Fundraising ROI Dashboard", layout="wide")
@@ -30,7 +34,7 @@ DISABLE_WORD_EXPORT = False
 
 
 # ======================================================================
-# GUIDE TAB (new)
+# GUIDE TAB
 # ======================================================================
 def guide_tab():
     st.header("Guide: How to Use the Dashboard")
@@ -46,7 +50,7 @@ def guide_tab():
     st.markdown(
         """
 - **Micro View (Operational Tracking):** Uses detailed transaction-level donations + cost entries, lets you filter by date/channel/campaign/donor segment, and shows trends and comparisons.
-- **Macro 3-Year Strategic View:** Uses high-level inputs (Total Raised, Base Cost, Retention, Margin, Cost Growth, shocks) to forecast a 3-year investment model and optionally compare to a budget.
+- **Macro 3-Year Strategic View:** Uses high-level planning inputs to allocate the current-year fundraising pool across the current year and next two years for strategic planning and optional budget comparison.
 """
     )
 
@@ -95,8 +99,8 @@ def guide_tab():
     st.subheader("Reports & downloads")
     st.markdown(
         """
-- **Micro View exports:** Excel + Word (PowerPoint removed).
-- **Macro View exports:** Excel + PDF summary (macro module must be present).
+- **Micro View exports:** Excel + Word
+- **Macro View exports:** Excel + PDF summary
 """
     )
 
@@ -104,7 +108,7 @@ def guide_tab():
 
 
 # ======================================================================
-# MICRO VIEW (your original app code, minus PowerPoint, with tweaks)
+# MICRO VIEW
 # ======================================================================
 def micro_view():
     st.subheader("Micro View (Operational Tracking)")
@@ -164,7 +168,6 @@ def micro_view():
         max_value=max_date.date()
     )
 
-    # Streamlit date_input can return a single date if user clicks one day; handle safely
     if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
         start_dt = pd.to_datetime(date_range[0])
         end_dt = pd.to_datetime(date_range[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
@@ -228,7 +231,7 @@ def micro_view():
     with tab4:
         st.plotly_chart(donor_mix_pie(d), use_container_width=True)
 
-    # Report generation (Excel + Word only)
+    # Report generation
     st.markdown("---")
     st.subheader("Generate Reports")
 
@@ -279,7 +282,6 @@ def micro_view():
         st.write("Donations (filtered)")
         st.dataframe(d.head(200), use_container_width=True)
 
-        # Show optional mapped donation columns if present (nice for validation)
         optional_cols = [
             "contribution_id", "contact_name", "designation",
             "payment_method", "remaining_amount", "financial_batch"
@@ -294,7 +296,7 @@ def micro_view():
 
 
 # ======================================================================
-# ROUTER (with tabs: Guide + Micro/Macro)
+# ROUTER
 # ======================================================================
 tabs = st.tabs(["Guide", "Dashboard"])
 
@@ -307,9 +309,8 @@ with tabs[1]:
     else:
         st.subheader("Macro 3-Year Strategic View (Investment Forecasting + Budget Comparison)")
         if macro_view is None:
-            st.error(
-                "Macro view module not found. Please add `core/macro_view.py` "
-                "and its dependencies (macro_model.py, reports_pdf.py, budget_templates.py)."
-            )
+            st.error("Macro view failed to load.")
+            if macro_import_error:
+                st.code(macro_import_error)
         else:
             macro_view()

@@ -369,3 +369,4 @@ def macro_view():
         file_name="bjc_macro_forecast_summary.pdf",
         mime="application/pdf",
     )
+

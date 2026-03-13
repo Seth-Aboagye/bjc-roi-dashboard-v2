@@ -28,7 +28,7 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
     lines = []
     lines.append(
         "This Macro View is a strategic planning tool. It assumes that a percentage of current-year donors "
-        "will continue donating in the next two years."
+        "will continue donating in Year 2 and also in Year 3, based on the Year 1 donation base."
     )
     lines.append(
         f"Over the 3-year horizon, the model projects **${total_don:,.0f}** in donations against "
@@ -43,6 +43,13 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
         f"**Development Margin (Year 1 only) = {float(assumptions['Development Margin (Y1 only)']):.0%}**, and "
         f"**Cost Growth Add-on (Years 2 and 3) = {float(assumptions['Cost Growth Add-on (Y2 & Y3)']):.0%} of base cost per year**."
     )
+
+    if roi_mult < 1.0:
+        lines.append("This scenario indicates that modeled cost exceeds the 3-year donation outcome; stronger donor continuation or tighter cost control may be needed.")
+    elif roi_mult < 2.0:
+        lines.append("This scenario produces a positive but moderate return; improving donor continuation or tightening assumptions would strengthen the net impact.")
+    else:
+        lines.append("This scenario produces a strong return over the 3-year planning horizon.")
 
     return "\n\n".join(lines)
 
@@ -100,8 +107,18 @@ def macro_view():
         cost_shock = 0.00
 
     colA, colB = st.columns(2)
-    total_donations = colA.number_input("Total Donations (Current Year)", min_value=0.0, value=250000.0, step=5000.0)
-    base_cost = colB.number_input("Base Cost (BJC Total Cost in Current Year)", min_value=0.0, value=150000.0, step=5000.0)
+    total_donations = colA.number_input(
+        "Total Donations (Current Year)",
+        min_value=0.0,
+        value=250000.0,
+        step=5000.0
+    )
+    base_cost = colB.number_input(
+        "Base Cost (BJC Total Cost in Current Year)",
+        min_value=0.0,
+        value=150000.0,
+        step=5000.0
+    )
 
     st.subheader("Adjustable Assumptions (update anytime)")
     c1, c2, c3, c4 = st.columns(4)

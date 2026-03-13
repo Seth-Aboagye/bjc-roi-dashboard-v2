@@ -37,49 +37,28 @@ def guide_tab():
         st.subheader("Purpose of Micro View")
         st.markdown(
             """
-Micro View is the **operational tracking** side of the dashboard.
+Micro View is the operational tracking side of the dashboard.
 
-It analyzes actual donation and cost data for a selected period and helps answer:
+It analyzes actual donations and costs for a selected period and helps answer:
 - How much did we raise?
 - How much did it cost?
 - What was the net result?
 - Which campaign codes performed best?
 - Which channels performed best?
-- Are donations coming from new or returning donors?
+- Are donations coming from new donors or returning donors?
 """
         )
 
         st.subheader("1) Upload Data (CSV)")
         st.markdown(
             """
-This is the first section in the sidebar.
-
 ### Donations CSV
-This file contains actual donation transactions.
-
-Common fields include:
-- Date Received
-- Amount
-- VANID
-- Source Code
-- Payment Method
-- Contact Name
-- Contribution ID
-- Designation
-- Remaining Amount
-- Financial Batch
+Contains actual donation transactions.
 
 ### Costs CSV
-This file contains fundraising-related costs.
+Contains fundraising-related costs.
 
-Common fields include:
-- date
-- cost_amount
-- campaign_code
-- channel
-- cost_type
-
-The dashboard standardizes these fields so they can be analyzed consistently.
+The dashboard standardizes uploaded fields so they can be analyzed consistently.
 """
         )
 
@@ -87,20 +66,16 @@ The dashboard standardizes these fields so they can be analyzed consistently.
         st.markdown(
             """
 ### Date Range
-Limits the analysis to the selected period.
+Limits analysis to a selected period.
 
 ### Channel
 Filters by fundraising source or method.
 
 ### Campaign Code
-Filters by source code / appeal code / campaign identifier.
+Filters by source code / campaign identifier.
 
 ### Donor Segment
-Splits donors into:
-- New
-- Returning
-
-This is based on the donor’s first appearance in the uploaded dataset.
+Splits donors into New and Returning.
 """
         )
 
@@ -141,10 +116,10 @@ This is based on the donor’s first appearance in the uploaded dataset.
 Shows monthly Raised, Costs, and Net, plus a waterfall summary.
 
 ### Compare Campaigns
-Shows campaign/source code performance. Includes the **Top N (by Raised)** slider, table, and chart.
+Compares campaign codes and includes the Top N slider.
 
 ### Compare Channels
-Shows performance by fundraising channel.
+Compares performance by channel.
 
 ### Donor Mix
 Shows donation distribution between new and returning donors.
@@ -154,12 +129,6 @@ Shows donation distribution between new and returning donors.
         st.subheader("5) Generate Reports")
         st.markdown(
             """
-### Report Title
-Lets you name the report.
-
-### Interpretation / Notes
-Lets you add commentary.
-
 ### Excel Report
 Exports filtered results to Excel.
 
@@ -168,67 +137,31 @@ Exports a written summary report.
 """
         )
 
-        st.subheader("6) Preview Section")
-        st.markdown(
-            """
-Shows the first 200 rows of filtered donations and costs so you can validate the uploaded data and filters.
-"""
-        )
-
     with guide_macro:
         st.subheader("Purpose of Macro View")
         st.markdown(
             """
-Macro View is the **strategic planning** side of the dashboard.
+Macro View is the strategic planning side of the dashboard.
 
 It assumes:
-- current-year donations are known
-- some donors from Year 1 will continue donating in Year 2
-- some donors from Year 1 will also continue donating in Year 3
-- this excludes any new donors in Years 2 and 3
-
-It helps answer:
-- If Year 1 donations are this amount, what does that imply for the next two years?
-- What is the 3-year donation impact from those same donors?
-- What does it cost over the same period?
-- How does the result change under conservative, base, optimistic, and custom assumptions?
+- Year 1 donations are known
+- Year 2 donations are a percentage of Year 1 donations from retained donors
+- Year 3 donations are also a percentage of Year 1 donations from retained donors
+- new donors in Years 2 and 3 are excluded from the model
+- cost follows a Year 1 margin and Years 2 and 3 cost-growth add-ons
 """
         )
 
-        st.subheader("1) Scenario Presets")
-        st.markdown(
-            """
-### Base
-Neutral planning case.
-
-### Conservative
-Lower donor continuation and higher cost pressure.
-
-### Optimistic
-Higher donor continuation and lower cost pressure.
-
-### Custom
-Lets leadership set assumptions manually.
-"""
-        )
-
-        st.subheader("2) Input Fields")
-        st.markdown(
-            """
-### Total Donations (Current Year)
-This is the Year 1 donation base.
-
-### Base Cost (BJC Total Cost in Current Year)
-This is the Year 1 cost base used by the macro model.
-"""
-        )
-
-        st.subheader("3) Adjustable Assumptions")
+        st.subheader("1) Inputs")
         st.markdown(
             r"""
-### Donor Continuation Rate
-This is the percentage of Year 1 donations expected again in Year 2 and again in Year 3.
+### Total Donations (Year 1)
+This is the Year 1 donation base.
 
+### Base Cost (Year 1)
+This is the Year 1 cost base.
+
+### Donor Continuation Rate
 \[
 \text{Year 2 Donations} = \text{Year 1 Donations} \times \text{Donor Continuation Rate}
 \]
@@ -238,15 +171,11 @@ This is the percentage of Year 1 donations expected again in Year 2 and again in
 \]
 
 ### Development Margin (Year 1 only)
-This is the additional Year 1 cost.
-
 \[
 \text{Year 1 Cost} = \text{Base Cost} \times (1 + \text{Margin})
 \]
 
-### Cost Growth Add-on (Y2 & Y3)
-This is the Year 2 and Year 3 add-on cost.
-
+### Cost Growth Add-on (Years 2 and 3)
 \[
 \text{Year 2 Cost} = \text{Base Cost} \times \text{Cost Growth}
 \]
@@ -254,16 +183,10 @@ This is the Year 2 and Year 3 add-on cost.
 \[
 \text{Year 3 Cost} = \text{Base Cost} \times \text{Cost Growth}
 \]
-
-### Donation Shock
-Adjusts donations upward or downward.
-
-### Cost Shock
-Adjusts costs upward or downward.
 """
         )
 
-        st.subheader("4) KPI Summary Row")
+        st.subheader("2) KPI Summary Row")
         st.markdown(
             r"""
 ### Total Donations (3yr)
@@ -289,14 +212,14 @@ Sum of Year 1, Year 2, and Year 3 cost.
 """
         )
 
-        st.subheader("5) Charts Tab")
+        st.subheader("3) Charts")
         st.markdown(
             """
-### Donations Forecast Across 3 Years
-Shows Year 1, Year 2, and Year 3 donations.
+### Donations Allocation Across 3 Years
+Shows the share of 3-year donations by year.
 
-### Scenario Comparison
-Compares Conservative, Base, and Optimistic scenarios.
+### Year-by-Year Comparison
+Compares Donations, Cost, and Net by year.
 
 ### ROI Sensitivity Map
 Shows how ROI changes when donor continuation and cost growth change.
@@ -305,31 +228,25 @@ Shows how ROI changes when donor continuation and cost growth change.
 Shows Donations, Cost, Net, and ROI by year.
 
 ### Forecast Table
-Shows the exact yearly values used in the charts.
+Shows the exact yearly figures.
 """
         )
 
-        st.subheader("6) Interpretation Tab")
+        st.subheader("4) Interpretation")
         st.markdown(
             """
-Provides a written explanation of:
-- total donations
-- total cost
-- total net
-- ROI
-- assumption summary
-- recommendations
+Provides written analysis of total donations, total cost, total net, ROI, assumptions, and recommendations.
 """
         )
 
-        st.subheader("7) Download Reports")
+        st.subheader("5) Download Reports")
         st.markdown(
             """
-### Excel
-Exports assumptions, KPI summary, forecast, scenarios, sensitivity, and interpretation.
+### Excel Report
+Exports assumptions, KPIs, forecast, sensitivity, and interpretation.
 
-### PDF
-Exports an executive summary of the macro model.
+### PDF Report
+Exports a concise executive summary.
 """
         )
 
@@ -345,18 +262,18 @@ def micro_view():
     with st.expander("Required columns + common aliases"):
         st.markdown("""
 **Donations CSV required fields:**
-- `date` (GiftDate, ContributionDate, Date Received)
-- `amount` (Amount, ContributionAmount, GiftAmount)
-- `donor_id` (VANID, PersonID, DonorID)
-- `campaign_code` (AppealCode, Campaign, Source Code, FundraisingCode)
-- `channel` (Channel, Source, Medium, Payment Method)
+- `date`
+- `amount`
+- `donor_id`
+- `campaign_code`
+- `channel`
 
 **Costs CSV required fields:**
-- `date` (ExpenseDate, PaidDate)
-- `cost_amount` (Amount, Expense, Cost)
-- `campaign_code` (optional but recommended; can be blank -> UNMAPPED)
-- `channel` (recommended; can be blank -> UNMAPPED)
-- `cost_type` (Direct, Labor, Overhead) (optional; default Direct)
+- `date`
+- `cost_amount`
+- `campaign_code`
+- `channel`
+- `cost_type`
 """)
 
     if not donations_file or not costs_file:
@@ -499,16 +416,6 @@ def micro_view():
     with st.expander("Preview (first 200 rows)"):
         st.write("Donations (filtered)")
         st.dataframe(d.head(200), use_container_width=True)
-
-        optional_cols = [
-            "contribution_id", "contact_name", "designation",
-            "payment_method", "remaining_amount", "financial_batch"
-        ]
-        present_optional = [c for c in optional_cols if c in d.columns]
-        if present_optional:
-            st.write("Donation extra fields (if available in upload)")
-            st.dataframe(d[present_optional].head(200), use_container_width=True)
-
         st.write("Costs (filtered)")
         st.dataframe(c.head(200), use_container_width=True)
 

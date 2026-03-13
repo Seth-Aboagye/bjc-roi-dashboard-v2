@@ -4,14 +4,11 @@ import pandas as pd
 import io
 
 from .macro_model import MacroInputs, build_macro_forecast
-from .budget_templates import budget_template_excel
 from .reports_pdf import build_macro_pdf
 
 from .charts import (
     macro_3yr_trend_line,
     macro_roi_bar,
-    macro_budget_vs_forecast_bar,
-    macro_variance_bars,
     macro_donations_allocation_chart,
     macro_scenario_comparison_chart,
     macro_roi_sensitivity_heatmap,
@@ -28,26 +25,9 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
     roi_pct = float(k.get("ROI % (3yr)", roi_mult - 1.0))
     c_per_1 = float(k.get("Cost per $1 (3yr)", 0.0))
 
-    budget_note = ""
-    b = model.get("budget_df")
-    if b is not None and all(col in b.columns for col in ["Donations Var", "Cost Var", "Net Var"]):
-        don_var = float(b["Donations Var"].sum())
-        cost_var = float(b["Cost Var"].sum())
-        net_var = float(b["Net Var"].sum())
-
-        def _fmt(x: float) -> str:
-            sign = "+" if x >= 0 else "-"
-            return f"{sign}${abs(x):,.0f}"
-
-        budget_note = (
-            f"Against the uploaded budget, the 3-year forecast shows "
-            f"**Donations variance {_fmt(don_var)}**, **Cost variance {_fmt(cost_var)}**, "
-            f"and **Net variance {_fmt(net_var)}** (Forecast − Budget)."
-        )
-
     lines = []
     lines.append(
-        "This Macro View is a strategic planning tool. It assumes that a portion of current-year donors "
+        "This Macro View is a strategic planning tool. It assumes that a percentage of current-year donors "
         "will continue donating in the next two years."
     )
     lines.append(
@@ -59,13 +39,10 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
         f"(approximately **{roi_pct*100:,.1f}%**) and a **cost per $1 of ${c_per_1:.2f}**."
     )
     lines.append(
-        f"Key assumptions include **Donor continuation rate = {float(assumptions['Donor Continuation Rate']):.0%}**, "
-        f"**Development margin (Year 1 only) = {float(assumptions['Development Margin (Y1 only)']):.0%}**, and "
-        f"**Cost growth add-on (Years 2 and 3) = {float(assumptions['Cost Growth Add-on (Y2 & Y3)']):.0%} of base cost per year**."
+        f"Key assumptions include **Donor Continuation Rate = {float(assumptions['Donor Continuation Rate']):.0%}**, "
+        f"**Development Margin (Year 1 only) = {float(assumptions['Development Margin (Y1 only)']):.0%}**, and "
+        f"**Cost Growth Add-on (Years 2 and 3) = {float(assumptions['Cost Growth Add-on (Y2 & Y3)']):.0%} of base cost per year**."
     )
-
-    if budget_note:
-        lines.append(budget_note)
 
     return "\n\n".join(lines)
 
@@ -95,7 +72,7 @@ def _build_sensitivity_pivot(base_inputs: MacroInputs) -> pd.DataFrame:
 
 
 def macro_view():
-    st.header("Macro 3-Year Strategic View (Donations Forecasting + Budget Comparison)")
+    st.header("Macro 3-Year Strategic View (Donations Forecasting)")
     st.caption(
         "Strategic planning tool: assumes a percentage of current-year donors will continue donating in Years 2 and 3."
     )
@@ -123,18 +100,8 @@ def macro_view():
         cost_shock = 0.00
 
     colA, colB = st.columns(2)
-    total_donations = colA.number_input(
-        "Total Donations (Current Year)",
-        min_value=0.0,
-        value=250000.0,
-        step=5000.0
-    )
-    base_cost = colB.number_input(
-        "Base Cost (BJC Total Cost in Current Year)",
-        min_value=0.0,
-        value=150000.0,
-        step=5000.0
-    )
+    total_donations = colA.number_input("Total Donations (Current Year)", min_value=0.0, value=250000.0, step=5000.0)
+    base_cost = colB.number_input("Base Cost (BJC Total Cost in Current Year)", min_value=0.0, value=150000.0, step=5000.0)
 
     st.subheader("Adjustable Assumptions (update anytime)")
     c1, c2, c3, c4 = st.columns(4)
@@ -156,25 +123,7 @@ def macro_view():
         cost_shock=float(cost_shock),
     )
 
-    st.divider()
-    st.subheader("Budget Comparison (optional)")
-    st.download_button(
-        "Download Budget Template (Excel)",
-        data=budget_template_excel(),
-        file_name="bjc_budget_template.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-    budget_file = st.file_uploader("Upload Budget (Excel or CSV)", type=["xlsx", "csv"])
-    budget_df = None
-    if budget_file is not None:
-        if budget_file.name.lower().endswith(".csv"):
-            budget_df = pd.read_csv(budget_file)
-        else:
-            budget_df = pd.read_excel(budget_file)
-        budget_df.columns = [str(c).strip() for c in budget_df.columns]
-
-    model = build_macro_forecast(inputs, budget_df=budget_df)
+    model = build_macro_forecast(inputs)
     k = model["kpis"]
 
     k1, k2, k3, k4, k5 = st.columns(5)
@@ -185,7 +134,7 @@ def macro_view():
     k5.metric("Cost per $1 (3yr)", f"${float(k['Cost per $1 (3yr)']):.2f}")
 
     st.divider()
-    t1, t2, t3 = st.tabs(["Charts", "Interpretation", "Budget & Variance"])
+    t1, t2 = st.tabs(["Charts", "Interpretation"])
 
     assumptions = {
         "Total Donations (Year 1)": total_donations,
@@ -275,20 +224,6 @@ def macro_view():
         for r in model.get("recommendations", []):
             st.write(f"• {r}")
 
-    with t3:
-        if model.get("budget_df") is None:
-            st.info("Upload a budget file to enable Budget vs Forecast and variance charts.")
-        else:
-            b = model["budget_df"]
-            st.subheader("Budget vs Forecast")
-            st.plotly_chart(macro_budget_vs_forecast_bar(b), use_container_width=True)
-
-            st.subheader("Variance vs Budget (Forecast - Budget)")
-            st.plotly_chart(macro_variance_bars(b), use_container_width=True)
-
-            st.caption("Budget comparison table")
-            st.dataframe(b, use_container_width=True)
-
     st.divider()
     st.subheader("Download Reports")
 
@@ -299,8 +234,6 @@ def macro_view():
         model["forecast_df"].to_excel(writer, sheet_name="Forecast", index=False)
         scenarios_df.to_excel(writer, sheet_name="Scenarios", index=False)
         pivot.reset_index().to_excel(writer, sheet_name="Sensitivity", index=False)
-        if model.get("budget_df") is not None:
-            model["budget_df"].to_excel(writer, sheet_name="Budget_Compare", index=False)
 
         pd.DataFrame([{"Interpretation": macro_interpretation(model, assumptions)}]).to_excel(
             writer, sheet_name="Interpretation", index=False

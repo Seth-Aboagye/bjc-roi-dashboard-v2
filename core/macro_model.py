@@ -7,18 +7,17 @@ import pandas as pd
 
 @dataclass
 class MacroInputs:
-    # Revenue allocation model
-    total_raised_y1: float
-    year1_realization: float          # e.g. 0.40
-    carryover_factor: float           # e.g. 0.60
+    # Donations logic
+    total_donations_y1: float
+    donor_continuation_rate: float   # e.g. 0.40 means 40% of Y1 donors donate again in Y2 and Y3
 
-    # Cost model
-    base_cost_y1: float               # BJC total cost in current year
-    margin: float                     # development margin, Year 1 only
-    cost_growth: float                # add-on % of base cost for Y2 and Y3
+    # Cost logic
+    base_cost_y1: float
+    margin: float                    # Development margin, Year 1 only
+    cost_growth: float               # Add-on % of base cost for Y2 and Y3
 
     # Scenario shocks
-    revenue_shock: float = 0.0
+    donation_shock: float = 0.0
     cost_shock: float = 0.0
 
 
@@ -31,34 +30,36 @@ def build_macro_forecast(
     budget_df: Optional[pd.DataFrame] = None
 ) -> Dict[str, Any]:
     """
-    Strategic planning model:
-    - Revenue: spreads the current-year fundraising pool across Y1-Y3
-    - Cost:
-        Y1 = base cost + development margin
-        Y2 = cost growth component only (% of base cost)
-        Y3 = cost growth component only (% of base cost)
+    Macro strategic planning model
+
+    Donations:
+    - Year 1 = current-year donations input
+    - Year 2 = Year 1 * donor continuation rate
+    - Year 3 = Year 2 * donor continuation rate
+
+    Cost:
+    - Year 1 = base cost + development margin
+    - Year 2 = cost growth add-on only (% of base cost)
+    - Year 3 = cost growth add-on only (% of base cost)
     """
 
     # ---------------------------
-    # Revenue allocation
+    # Donations
     # ---------------------------
-    R = float(inputs.total_raised_y1)
-    r1 = max(0.0, min(1.0, float(inputs.year1_realization)))
-    k = max(0.0, min(1.0, float(inputs.carryover_factor)))
+    D1 = float(inputs.total_donations_y1)
+    cont = max(0.0, min(1.0, float(inputs.donor_continuation_rate)))
 
-    rev1 = R * r1
-    remaining_after_y1 = R - rev1
-    rev2 = remaining_after_y1 * k
-    remaining_after_y2 = remaining_after_y1 - rev2
-    rev3 = remaining_after_y2 * k
+    donations1 = D1
+    donations2 = D1 * cont
+    donations3 = donations2 * cont
 
-    revenue_mult = 1.0 + float(inputs.revenue_shock)
-    rev1 *= revenue_mult
-    rev2 *= revenue_mult
-    rev3 *= revenue_mult
+    donation_mult = 1.0 + float(inputs.donation_shock)
+    donations1 *= donation_mult
+    donations2 *= donation_mult
+    donations3 *= donation_mult
 
     # ---------------------------
-    # Cost structure
+    # Costs
     # ---------------------------
     C = float(inputs.base_cost_y1)
     m = max(0.0, float(inputs.margin))
@@ -78,25 +79,25 @@ def build_macro_forecast(
     # ---------------------------
     df = pd.DataFrame({
         "Year": ["Year 1", "Year 2", "Year 3"],
-        "Revenue": [rev1, rev2, rev3],
+        "Donations": [donations1, donations2, donations3],
         "Cost": [cost1, cost2, cost3],
     })
-    df["Net"] = df["Revenue"] - df["Cost"]
-    df["ROI Multiple"] = df.apply(lambda r: _safe_div(r["Revenue"], r["Cost"]), axis=1)
+    df["Net"] = df["Donations"] - df["Cost"]
+    df["ROI Multiple"] = df.apply(lambda r: _safe_div(r["Donations"], r["Cost"]), axis=1)
     df["ROI %"] = df["ROI Multiple"] - 1.0
 
     # ---------------------------
     # KPIs
     # ---------------------------
-    total_rev = float(df["Revenue"].sum())
+    total_don = float(df["Donations"].sum())
     total_cost = float(df["Cost"].sum())
     total_net = float(df["Net"].sum())
-    roi_multiple_3yr = _safe_div(total_rev, total_cost)
+    roi_multiple_3yr = _safe_div(total_don, total_cost)
     roi_pct_3yr = roi_multiple_3yr - 1.0
-    cost_per_1 = _safe_div(total_cost, total_rev)
+    cost_per_1 = _safe_div(total_cost, total_don)
 
     kpis = {
-        "Total Revenue (3yr)": total_rev,
+        "Total Donations (3yr)": total_don,
         "Total Cost (3yr)": total_cost,
         "Total Net (3yr)": total_net,
         "ROI Multiple (3yr)": roi_multiple_3yr,
@@ -108,18 +109,17 @@ def build_macro_forecast(
     # Recommendations
     # ---------------------------
     recs = []
-
-    unrealized = max(0.0, (R * revenue_mult) - total_rev)
     recs.append(
-        f"Revenue is allocated across three years for planning. Approximate unrealized amount after Year 3 is ${unrealized:,.0f}."
+        f"Donations are modeled such that the Year 2 amount equals {cont:.0%} of Year 1 donations, "
+        f"and Year 3 equals {cont:.0%} of Year 2 donations."
     )
 
     if roi_multiple_3yr < 1.0:
-        recs.append("Overall ROI is below 1.0x; review Year 1 development margin, realization assumptions, and cost discipline.")
+        recs.append("Overall ROI is below 1.0x; review Year 1 development margin, donor continuation assumptions, and cost discipline.")
     elif roi_multiple_3yr < 2.0:
-        recs.append("Overall ROI is positive but moderate; improving realization and tightening cost assumptions would strengthen net impact.")
+        recs.append("Overall ROI is positive but moderate; improving donor continuation and tightening cost assumptions would strengthen net impact.")
     else:
-        recs.append("Overall ROI is strong; focus on maintaining cost discipline while maximizing strategic allocation.")
+        recs.append("Overall ROI is strong; focus on sustaining donor continuation while maintaining cost discipline.")
 
     # ---------------------------
     # Budget comparison
@@ -138,25 +138,25 @@ def build_macro_forecast(
             return None
 
         year_col = _pick("Year", "year")
-        br_col = _pick("Budget Revenue", "BudgetRevenue", "budget_revenue", "revenue_budget")
+        bd_col = _pick("Budget Donations", "BudgetDonations", "budget_donations", "donations_budget", "Budget Revenue", "BudgetRevenue", "budget_revenue")
         bc_col = _pick("Budget Cost", "BudgetCost", "budget_cost", "cost_budget")
 
-        if year_col and br_col and bc_col:
+        if year_col and bd_col and bc_col:
             merged = pd.merge(
                 df,
-                b[[year_col, br_col, bc_col]].rename(
+                b[[year_col, bd_col, bc_col]].rename(
                     columns={
                         year_col: "Year",
-                        br_col: "Budget Revenue",
+                        bd_col: "Budget Donations",
                         bc_col: "Budget Cost",
                     }
                 ),
                 on="Year",
                 how="left"
             )
-            merged["Revenue Var"] = merged["Revenue"] - merged["Budget Revenue"]
+            merged["Donations Var"] = merged["Donations"] - merged["Budget Donations"]
             merged["Cost Var"] = merged["Cost"] - merged["Budget Cost"]
-            merged["Net Var"] = merged["Net"] - (merged["Budget Revenue"] - merged["Budget Cost"])
+            merged["Net Var"] = merged["Net"] - (merged["Budget Donations"] - merged["Budget Cost"])
             budget_out = merged
 
     return {

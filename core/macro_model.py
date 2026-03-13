@@ -9,12 +9,12 @@ import pandas as pd
 class MacroInputs:
     # Donations logic
     total_donations_y1: float
-    donor_continuation_rate: float   # e.g. 0.40 means 40% of Y1 donors donate again in Y2 and Y3
+    donor_continuation_rate: float   # e.g. 0.40 means 40% of Year 1 donations in Year 2 and again in Year 3
 
     # Cost logic
     base_cost_y1: float
-    margin: float                    # Development margin, Year 1 only
-    cost_growth: float               # Add-on % of base cost for Y2 and Y3
+    margin: float                    # applied only in Year 1
+    cost_growth: float               # applied as add-on in Year 2 and Year 3
 
     # Scenario shocks
     donation_shock: float = 0.0
@@ -30,17 +30,18 @@ def build_macro_forecast(
     budget_df: Optional[pd.DataFrame] = None
 ) -> Dict[str, Any]:
     """
-    Macro strategic planning model
+    3-year donations planning model
 
     Donations:
-    - Year 1 = current-year donations input
-    - Year 2 = Year 1 * donor continuation rate
-    - Year 3 = Year 2 * donor continuation rate
+    - Year 1 = current-year donations
+    - Year 2 = Year 1 donations * donor continuation rate
+    - Year 3 = Year 1 donations * donor continuation rate
+      (This excludes new donors in Years 2 and 3)
 
-    Cost:
-    - Year 1 = base cost + development margin
-    - Year 2 = cost growth add-on only (% of base cost)
-    - Year 3 = cost growth add-on only (% of base cost)
+    Costs:
+    - Year 1 = base cost + margin
+    - Year 2 = cost growth % of base cost
+    - Year 3 = cost growth % of base cost
     """
 
     # ---------------------------
@@ -51,7 +52,7 @@ def build_macro_forecast(
 
     donations1 = D1
     donations2 = D1 * cont
-    donations3 = donations2 * cont
+    donations3 = D1 * cont
 
     donation_mult = 1.0 + float(inputs.donation_shock)
     donations1 *= donation_mult
@@ -110,54 +111,18 @@ def build_macro_forecast(
     # ---------------------------
     recs = []
     recs.append(
-        f"Donations are modeled such that the Year 2 amount equals {cont:.0%} of Year 1 donations, "
-        f"and Year 3 equals {cont:.0%} of Year 2 donations."
+        f"Donations are modeled so that Year 2 equals {cont:.0%} of Year 1 donations and Year 3 also equals {cont:.0%} of Year 1 donations, excluding any new donors in Years 2 and 3."
     )
 
     if roi_multiple_3yr < 1.0:
-        recs.append("Overall ROI is below 1.0x; review Year 1 development margin, donor continuation assumptions, and cost discipline.")
+        recs.append("Overall ROI is below 1.0x; review donor continuation assumptions, Year 1 development margin, and cost discipline.")
     elif roi_multiple_3yr < 2.0:
-        recs.append("Overall ROI is positive but moderate; improving donor continuation and tightening cost assumptions would strengthen net impact.")
+        recs.append("Overall ROI is positive but moderate; improving donor continuation or tightening cost assumptions would strengthen net impact.")
     else:
-        recs.append("Overall ROI is strong; focus on sustaining donor continuation while maintaining cost discipline.")
+        recs.append("Overall ROI is strong; the focus should be on sustaining donor continuation while maintaining cost discipline.")
 
-    # ---------------------------
-    # Budget comparison
-    # ---------------------------
+    # Budget intentionally removed
     budget_out = None
-    if budget_df is not None and len(budget_df) > 0:
-        b = budget_df.copy()
-        b.columns = [str(c).strip() for c in b.columns]
-
-        colmap = {c.lower(): c for c in b.columns}
-
-        def _pick(*names):
-            for n in names:
-                if n.lower() in colmap:
-                    return colmap[n.lower()]
-            return None
-
-        year_col = _pick("Year", "year")
-        bd_col = _pick("Budget Donations", "BudgetDonations", "budget_donations", "donations_budget", "Budget Revenue", "BudgetRevenue", "budget_revenue")
-        bc_col = _pick("Budget Cost", "BudgetCost", "budget_cost", "cost_budget")
-
-        if year_col and bd_col and bc_col:
-            merged = pd.merge(
-                df,
-                b[[year_col, bd_col, bc_col]].rename(
-                    columns={
-                        year_col: "Year",
-                        bd_col: "Budget Donations",
-                        bc_col: "Budget Cost",
-                    }
-                ),
-                on="Year",
-                how="left"
-            )
-            merged["Donations Var"] = merged["Donations"] - merged["Budget Donations"]
-            merged["Cost Var"] = merged["Cost"] - merged["Budget Cost"]
-            merged["Net Var"] = merged["Net"] - (merged["Budget Donations"] - merged["Budget Cost"])
-            budget_out = merged
 
     return {
         "forecast_df": df,
@@ -165,3 +130,6 @@ def build_macro_forecast(
         "budget_df": budget_out,
         "recommendations": recs,
     }
+2) core/charts.py
+
+Rep

@@ -1,53 +1,125 @@
-from __future__ import annotations
-import io
-import pandas as pd
+from io import BytesIO
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib import colors
 
-def build_macro_pdf(title: str, kpis: dict, assumptions: dict, recs: list[str], forecast_df: pd.DataFrame) -> bytes:
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=letter)
-    w, h = letter
-    y = h - 60
 
-    c.setFont("Helvetica-Bold", 15)
-    c.drawString(50, y, title)
+def _money(x) -> str:
+    try:
+        return f"${float(x):,.0f}"
+    except Exception:
+        return str(x)
 
-    y -= 28
-    c.setFont("Helvetica", 11)
-    for k in ["Total Revenue (3yr)", "Total Cost (3yr)", "Total Net (3yr)"]:
-        c.drawString(50, y, f"{k}: ${kpis[k]:,.2f}")
-        y -= 16
-    c.drawString(50, y, f"ROI Multiple (3yr): {kpis['ROI Multiple (3yr)']:.2f}x")
-    y -= 16
-    c.drawString(50, y, f"ROI % (3yr): {kpis['ROI % (3yr)']*100:.1f}%")
-    y -= 16
-    c.drawString(50, y, f"Cost per $1 (3yr): ${kpis['Cost per $1 (3yr)']:.2f}")
 
-    y -= 24
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, y, "Assumptions")
-    y -= 16
-    c.setFont("Helvetica", 10)
+def _pct(x) -> str:
+    try:
+        return f"{float(x) * 100:,.1f}%"
+    except Exception:
+        return str(x)
+
+
+def build_macro_pdf(
+    title: str,
+    kpis: dict,
+    assumptions: dict,
+    recs: list,
+    forecast_df,
+) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    styles = getSampleStyleSheet()
+
+    story = []
+
+    story.append(Paragraph(title, styles["Title"]))
+    story.append(Spacer(1, 12))
+
+    intro = (
+        "This report summarizes the 3-year strategic planning forecast for donations and cost. "
+        "The model assumes that a percentage of current-year donors will continue donating in Year 2 and again in Year 3, "
+        "while cost follows the selected Year 1 development margin and Year 2/Year 3 cost growth assumptions."
+    )
+    story.append(Paragraph(intro, styles["BodyText"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("KPI Summary", styles["Heading2"]))
+
+    kpi_rows = [
+        ["Metric", "Value"],
+        ["Total Donations (3yr)", _money(kpis.get("Total Donations (3yr)", 0))],
+        ["Total Cost (3yr)", _money(kpis.get("Total Cost (3yr)", 0))],
+        ["Total Net (3yr)", _money(kpis.get("Total Net (3yr)", 0))],
+        ["ROI Multiple (3yr)", f"{float(kpis.get('ROI Multiple (3yr)', 0)):.2f}x"],
+        ["ROI % (3yr)", _pct(kpis.get("ROI % (3yr)", 0))],
+        ["Cost per $1 (3yr)", f"${float(kpis.get('Cost per $1 (3yr)', 0)):.2f}"],
+    ]
+
+    kpi_table = Table(kpi_rows, hAlign="LEFT")
+    kpi_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("PADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(kpi_table)
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Assumptions", styles["Heading2"]))
+
+    assumption_rows = [["Assumption", "Value"]]
     for k, v in assumptions.items():
-        c.drawString(60, y, f"{k}: {v}")
-        y -= 14
-        if y < 80:
-            c.showPage()
-            y = h - 60
+        if isinstance(v, float):
+            if "Rate" in k or "Shock" in k or "Margin" in k or "Growth" in k:
+                val = _pct(v)
+            else:
+                val = str(v)
+        else:
+            val = str(v)
+        assumption_rows.append([str(k), val])
 
-    y -= 8
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, y, "Recommendations")
-    y -= 16
-    c.setFont("Helvetica", 10)
-    for r in recs:
-        c.drawString(60, y, f"• {r[:110]}")
-        y -= 14
-        if y < 80:
-            c.showPage()
-            y = h - 60
+    assumption_table = Table(assumption_rows, hAlign="LEFT")
+    assumption_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("PADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(assumption_table)
+    story.append(Spacer(1, 12))
 
-    c.showPage()
-    c.save()
-    return buf.getvalue()
+    story.append(Paragraph("3-Year Forecast", styles["Heading2"]))
+
+    forecast_rows = [["Year", "Donations", "Cost", "Net", "ROI Multiple"]]
+
+    for _, row in forecast_df.iterrows():
+        forecast_rows.append([
+            str(row.get("Year", "")),
+            _money(row.get("Donations", 0)),
+            _money(row.get("Cost", 0)),
+            _money(row.get("Net", 0)),
+            f"{float(row.get('ROI Multiple', 0)):.2f}x",
+        ])
+
+    forecast_table = Table(forecast_rows, hAlign="LEFT")
+    forecast_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("PADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(forecast_table)
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("Interpretation and Recommendations", styles["Heading2"]))
+    if recs:
+        for r in recs:
+            story.append(Paragraph(f"• {r}", styles["BodyText"]))
+            story.append(Spacer(1, 6))
+    else:
+        story.append(Paragraph("No recommendations were generated.", styles["BodyText"]))
+
+    doc.build(story)
+    pdf = buffer.getvalue()
+    buffer.close()
+    return pdf

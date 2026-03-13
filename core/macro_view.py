@@ -12,7 +12,7 @@ from .charts import (
     macro_roi_bar,
     macro_budget_vs_forecast_bar,
     macro_variance_bars,
-    macro_revenue_allocation_chart,
+    macro_donations_allocation_chart,
     macro_scenario_comparison_chart,
     macro_roi_sensitivity_heatmap,
 )
@@ -21,7 +21,7 @@ from .charts import (
 def macro_interpretation(model: dict, assumptions: dict) -> str:
     k = model.get("kpis", {}) or {}
 
-    total_rev = float(k.get("Total Revenue (3yr)", 0.0))
+    total_don = float(k.get("Total Donations (3yr)", 0.0))
     total_cost = float(k.get("Total Cost (3yr)", 0.0))
     total_net = float(k.get("Total Net (3yr)", 0.0))
     roi_mult = float(k.get("ROI Multiple (3yr)", 0.0))
@@ -30,8 +30,8 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
 
     budget_note = ""
     b = model.get("budget_df")
-    if b is not None and all(col in b.columns for col in ["Revenue Var", "Cost Var", "Net Var"]):
-        rev_var = float(b["Revenue Var"].sum())
+    if b is not None and all(col in b.columns for col in ["Donations Var", "Cost Var", "Net Var"]):
+        don_var = float(b["Donations Var"].sum())
         cost_var = float(b["Cost Var"].sum())
         net_var = float(b["Net Var"].sum())
 
@@ -41,27 +41,25 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
 
         budget_note = (
             f"Against the uploaded budget, the 3-year forecast shows "
-            f"**Revenue variance {_fmt(rev_var)}**, **Cost variance {_fmt(cost_var)}**, "
+            f"**Donations variance {_fmt(don_var)}**, **Cost variance {_fmt(cost_var)}**, "
             f"and **Net variance {_fmt(net_var)}** (Forecast − Budget)."
         )
 
     lines = []
     lines.append(
-        "This Macro View is a strategic planning allocation model. "
-        "It spreads the current-year fundraising pool across the current year and the next two years for planning purposes."
+        "This Macro View is a strategic planning tool. It assumes that a portion of current-year donors "
+        "will continue donating in the next two years."
     )
     lines.append(
-        f"Over the 3-year horizon, the model projects **${total_rev:,.0f}** in allocated revenue against "
+        f"Over the 3-year horizon, the model projects **${total_don:,.0f}** in donations against "
         f"**${total_cost:,.0f}** in modeled cost, resulting in a net of **${total_net:,.0f}**."
     )
     lines.append(
         f"That corresponds to an overall **ROI of {roi_mult:.2f}x** "
         f"(approximately **{roi_pct*100:,.1f}%**) and a **cost per $1 of ${c_per_1:.2f}**."
     )
-
     lines.append(
-        f"Key assumptions include **Year 1 realization rate = {float(assumptions['Year 1 Realization Rate']):.0%}**, "
-        f"**Carryover factor = {float(assumptions['Carryover Factor']):.0%}**, "
+        f"Key assumptions include **Donor continuation rate = {float(assumptions['Donor Continuation Rate']):.0%}**, "
         f"**Development margin (Year 1 only) = {float(assumptions['Development Margin (Y1 only)']):.0%}**, and "
         f"**Cost growth add-on (Years 2 and 3) = {float(assumptions['Cost Growth Add-on (Y2 & Y3)']):.0%} of base cost per year**."
     )
@@ -69,76 +67,64 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
     if budget_note:
         lines.append(budget_note)
 
-    if roi_mult < 1.0:
-        lines.append("This scenario indicates costs exceed the 3-year allocated revenue impact; assumptions may need to be tightened.")
-    elif roi_mult < 2.0:
-        lines.append("This scenario indicates a positive but moderate return; improving realization or cost discipline would strengthen net impact.")
-    else:
-        lines.append("This scenario indicates a strong return over the 3-year planning horizon.")
-
     return "\n\n".join(lines)
 
 
 def _build_sensitivity_pivot(base_inputs: MacroInputs) -> pd.DataFrame:
-    carry_vals = [0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
+    continuation_vals = [0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
     cg_vals = [0.00, 0.02, 0.05, 0.08, 0.10, 0.15, 0.20]
 
     rows = []
-    for carry in carry_vals:
+    for cont in continuation_vals:
         for cg in cg_vals:
             test_inputs = MacroInputs(
-                total_raised_y1=base_inputs.total_raised_y1,
-                year1_realization=base_inputs.year1_realization,
-                carryover_factor=carry,
+                total_donations_y1=base_inputs.total_donations_y1,
+                donor_continuation_rate=cont,
                 base_cost_y1=base_inputs.base_cost_y1,
                 margin=base_inputs.margin,
                 cost_growth=cg,
-                revenue_shock=base_inputs.revenue_shock,
+                donation_shock=base_inputs.donation_shock,
                 cost_shock=base_inputs.cost_shock,
             )
             m = build_macro_forecast(test_inputs)
             roi = float(m["kpis"].get("ROI Multiple (3yr)", 0.0))
-            rows.append({"Carryover": carry, "CostGrowth": cg, "ROI": roi})
+            rows.append({"Continuation": cont, "CostGrowth": cg, "ROI": roi})
 
     df = pd.DataFrame(rows)
-    return df.pivot(index="Carryover", columns="CostGrowth", values="ROI").sort_index()
+    return df.pivot(index="Continuation", columns="CostGrowth", values="ROI").sort_index()
 
 
 def macro_view():
-    st.header("Macro 3-Year Strategic View (Investment Forecasting + Budget Comparison)")
+    st.header("Macro 3-Year Strategic View (Donations Forecasting + Budget Comparison)")
     st.caption(
-        "Strategic planning tool: allocate the current-year fundraising pool across the current year and the next two years."
+        "Strategic planning tool: assumes a percentage of current-year donors will continue donating in Years 2 and 3."
     )
 
     st.subheader("Scenario Presets")
     preset = st.selectbox("Preset", ["Base", "Conservative", "Optimistic", "Custom"], index=0)
 
-    # defaults
-    year1_realization = 0.40
-    carryover = 0.60
+    donor_continuation = 0.40
     margin = 0.20
     cost_growth = 0.05
-    revenue_shock = 0.00
+    donation_shock = 0.00
     cost_shock = 0.00
 
     if preset == "Conservative":
-        year1_realization = 0.30
-        carryover = 0.50
+        donor_continuation = 0.30
         margin = 0.25
         cost_growth = 0.08
-        revenue_shock = -0.03
+        donation_shock = -0.03
         cost_shock = 0.03
     elif preset == "Optimistic":
-        year1_realization = 0.50
-        carryover = 0.70
+        donor_continuation = 0.50
         margin = 0.15
         cost_growth = 0.03
-        revenue_shock = 0.03
+        donation_shock = 0.03
         cost_shock = 0.00
 
     colA, colB = st.columns(2)
-    total_raised = colA.number_input(
-        "Total Raised (Current Year Pool)",
+    total_donations = colA.number_input(
+        "Total Donations (Current Year)",
         min_value=0.0,
         value=250000.0,
         step=5000.0
@@ -151,25 +137,22 @@ def macro_view():
     )
 
     st.subheader("Adjustable Assumptions (update anytime)")
-    c1, c2, c3, c4, c5 = st.columns(5)
-    year1_realization = c1.slider("Year 1 Realization Rate", 0.0, 1.0, float(year1_realization), 0.05)
-    carryover = c2.slider("Carryover Factor (of remaining)", 0.0, 1.0, float(carryover), 0.05)
-    margin = c3.slider("Development Margin (Year 1 only)", 0.0, 0.50, float(margin), 0.01)
-    cost_growth = c4.slider("Cost Growth Add-on (Y2 & Y3, % of base cost)", 0.0, 0.25, float(cost_growth), 0.01)
-    revenue_shock = c5.slider("Revenue Shock (applies to all years)", -0.30, 0.30, float(revenue_shock), 0.01)
+    c1, c2, c3, c4 = st.columns(4)
+    donor_continuation = c1.slider("Donor Continuation Rate", 0.0, 1.0, float(donor_continuation), 0.05)
+    margin = c2.slider("Development Margin (Year 1 only)", 0.0, 0.50, float(margin), 0.01)
+    cost_growth = c3.slider("Cost Growth Add-on (Y2 & Y3, % of base cost)", 0.0, 0.25, float(cost_growth), 0.01)
+    donation_shock = c4.slider("Donation Shock (applies to all years)", -0.30, 0.30, float(donation_shock), 0.01)
 
     with st.expander("Advanced"):
         cost_shock = st.slider("Cost Shock (applies to all years)", -0.30, 0.30, float(cost_shock), 0.01)
 
-    # IMPORTANT: only pass fields that MacroInputs actually accepts
     inputs = MacroInputs(
-        total_raised_y1=float(total_raised),
-        year1_realization=float(year1_realization),
-        carryover_factor=float(carryover),
+        total_donations_y1=float(total_donations),
+        donor_continuation_rate=float(donor_continuation),
         base_cost_y1=float(base_cost),
         margin=float(margin),
         cost_growth=float(cost_growth),
-        revenue_shock=float(revenue_shock),
+        donation_shock=float(donation_shock),
         cost_shock=float(cost_shock),
     )
 
@@ -195,7 +178,7 @@ def macro_view():
     k = model["kpis"]
 
     k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Total Revenue (3yr)", f"${float(k['Total Revenue (3yr)']):,.0f}")
+    k1.metric("Total Donations (3yr)", f"${float(k['Total Donations (3yr)']):,.0f}")
     k2.metric("Total Cost (3yr)", f"${float(k['Total Cost (3yr)']):,.0f}")
     k3.metric("Total Net (3yr)", f"${float(k['Total Net (3yr)']):,.0f}")
     k4.metric("ROI Multiple (3yr)", f"{float(k['ROI Multiple (3yr)']):.2f}x")
@@ -205,35 +188,32 @@ def macro_view():
     t1, t2, t3 = st.tabs(["Charts", "Interpretation", "Budget & Variance"])
 
     assumptions = {
-        "Total Raised (Year 1 Pool)": total_raised,
+        "Total Donations (Year 1)": total_donations,
         "Base Cost (Year 1)": base_cost,
-        "Year 1 Realization Rate": year1_realization,
-        "Carryover Factor": carryover,
+        "Donor Continuation Rate": donor_continuation,
         "Development Margin (Y1 only)": margin,
         "Cost Growth Add-on (Y2 & Y3)": cost_growth,
-        "Revenue Shock": revenue_shock,
+        "Donation Shock": donation_shock,
         "Cost Shock": cost_shock,
         "Preset": preset,
     }
 
     conservative_inputs = MacroInputs(
-        total_raised_y1=inputs.total_raised_y1,
-        year1_realization=max(inputs.year1_realization - 0.10, 0.0),
-        carryover_factor=max(inputs.carryover_factor - 0.10, 0.0),
+        total_donations_y1=inputs.total_donations_y1,
+        donor_continuation_rate=max(inputs.donor_continuation_rate - 0.10, 0.0),
         base_cost_y1=inputs.base_cost_y1,
         margin=min(inputs.margin + 0.05, 0.50),
         cost_growth=min(inputs.cost_growth + 0.03, 0.25),
-        revenue_shock=-0.03,
+        donation_shock=-0.03,
         cost_shock=0.03,
     )
     optimistic_inputs = MacroInputs(
-        total_raised_y1=inputs.total_raised_y1,
-        year1_realization=min(inputs.year1_realization + 0.10, 1.0),
-        carryover_factor=min(inputs.carryover_factor + 0.10, 1.0),
+        total_donations_y1=inputs.total_donations_y1,
+        donor_continuation_rate=min(inputs.donor_continuation_rate + 0.10, 1.0),
         base_cost_y1=inputs.base_cost_y1,
         margin=max(inputs.margin - 0.05, 0.0),
         cost_growth=max(inputs.cost_growth - 0.02, 0.0),
-        revenue_shock=0.03,
+        donation_shock=0.03,
         cost_shock=0.00,
     )
 
@@ -243,21 +223,21 @@ def macro_view():
     scenarios_df = pd.DataFrame([
         {
             "Scenario": "Conservative",
-            "Total Revenue": conservative_model["kpis"]["Total Revenue (3yr)"],
+            "Total Donations": conservative_model["kpis"]["Total Donations (3yr)"],
             "Total Cost": conservative_model["kpis"]["Total Cost (3yr)"],
             "Net": conservative_model["kpis"]["Total Net (3yr)"],
             "ROI Multiple": conservative_model["kpis"]["ROI Multiple (3yr)"],
         },
         {
             "Scenario": "Base",
-            "Total Revenue": model["kpis"]["Total Revenue (3yr)"],
+            "Total Donations": model["kpis"]["Total Donations (3yr)"],
             "Total Cost": model["kpis"]["Total Cost (3yr)"],
             "Net": model["kpis"]["Total Net (3yr)"],
             "ROI Multiple": model["kpis"]["ROI Multiple (3yr)"],
         },
         {
             "Scenario": "Optimistic",
-            "Total Revenue": optimistic_model["kpis"]["Total Revenue (3yr)"],
+            "Total Donations": optimistic_model["kpis"]["Total Donations (3yr)"],
             "Total Cost": optimistic_model["kpis"]["Total Cost (3yr)"],
             "Net": optimistic_model["kpis"]["Total Net (3yr)"],
             "ROI Multiple": optimistic_model["kpis"]["ROI Multiple (3yr)"],
@@ -265,8 +245,8 @@ def macro_view():
     ])
 
     with t1:
-        st.subheader("Revenue Allocation (Strategic Planning)")
-        st.plotly_chart(macro_revenue_allocation_chart(model["forecast_df"]), use_container_width=True)
+        st.subheader("Donations Forecast Across 3 Years")
+        st.plotly_chart(macro_donations_allocation_chart(model["forecast_df"]), use_container_width=True)
 
         st.subheader("Scenario Comparison")
         st.plotly_chart(macro_scenario_comparison_chart(scenarios_df), use_container_width=True)
@@ -275,10 +255,10 @@ def macro_view():
         st.subheader("ROI Sensitivity Map")
         pivot = _build_sensitivity_pivot(inputs)
         st.plotly_chart(
-            macro_roi_sensitivity_heatmap(pivot, "ROI Sensitivity (3yr): Carryover Factor vs Cost Growth"),
+            macro_roi_sensitivity_heatmap(pivot, "ROI Sensitivity (3yr): Donor Continuation vs Cost Growth"),
             use_container_width=True
         )
-        st.caption("This heatmap shows how ROI changes when carryover and cost growth assumptions shift.")
+        st.caption("This heatmap shows how ROI changes when donor continuation and cost growth assumptions shift.")
 
         st.subheader("Forecast Trend & ROI by Year")
         st.plotly_chart(macro_3yr_trend_line(model["forecast_df"]), use_container_width=True)
@@ -329,7 +309,7 @@ def macro_view():
     st.download_button(
         "Download Excel (Macro Forecast + Scenarios + Sensitivity)",
         data=excel_out.getvalue(),
-        file_name="bjc_macro_forecast_scenarios_sensitivity.xlsx",
+        file_name="bjc_macro_donations_forecast.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
@@ -343,6 +323,6 @@ def macro_view():
     st.download_button(
         "Download PDF (Executive Summary)",
         data=pdf_bytes,
-        file_name="bjc_macro_forecast_summary.pdf",
+        file_name="bjc_macro_donations_summary.pdf",
         mime="application/pdf",
     )

@@ -15,11 +15,7 @@ def line_trend(d: pd.DataFrame, c: pd.DataFrame):
     fig.add_trace(go.Scatter(x=m["month"], y=m["raised"], mode="lines+markers", name="Raised"))
     fig.add_trace(go.Scatter(x=m["month"], y=m["costs"], mode="lines+markers", name="Costs"))
     fig.add_trace(go.Scatter(x=m["month"], y=m["net"], mode="lines+markers", name="Net"))
-    fig.update_layout(
-        title="Monthly Trend: Raised vs Costs vs Net",
-        xaxis_title="Month",
-        yaxis_title="USD"
-    )
+    fig.update_layout(title="Monthly Trend: Raised vs Costs vs Net", xaxis_title="Month", yaxis_title="USD")
     return fig
 
 
@@ -74,18 +70,9 @@ def macro_3yr_trend_line(forecast_df: pd.DataFrame):
     net_col = _col(forecast_df, "Net", "net")
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=forecast_df[year_col], y=forecast_df[donations_col],
-        mode="lines+markers", name="Donations"
-    ))
-    fig.add_trace(go.Scatter(
-        x=forecast_df[year_col], y=forecast_df[cost_col],
-        mode="lines+markers", name="Cost"
-    ))
-    fig.add_trace(go.Scatter(
-        x=forecast_df[year_col], y=forecast_df[net_col],
-        mode="lines+markers", name="Net"
-    ))
+    fig.add_trace(go.Scatter(x=forecast_df[year_col], y=forecast_df[donations_col], mode="lines+markers", name="Donations"))
+    fig.add_trace(go.Scatter(x=forecast_df[year_col], y=forecast_df[cost_col], mode="lines+markers", name="Cost"))
+    fig.add_trace(go.Scatter(x=forecast_df[year_col], y=forecast_df[net_col], mode="lines+markers", name="Net"))
     fig.update_layout(
         title="3-Year Forecast: Donations vs Cost vs Net",
         xaxis_title="Year",
@@ -96,29 +83,14 @@ def macro_3yr_trend_line(forecast_df: pd.DataFrame):
 
 def macro_roi_bar(forecast_df: pd.DataFrame):
     year_col = _col(forecast_df, "Year", "year")
-
-    if "ROI Multiple" in forecast_df.columns:
-        y = forecast_df["ROI Multiple"].astype(float)
-        y_label = "ROI Multiple"
-    elif "ROI %" in forecast_df.columns:
-        y = forecast_df["ROI %"].astype(float) * 100.0
-        y_label = "ROI (%)"
-    else:
-        roi_col = _col(forecast_df, "ROI", "roi")
-        vals = forecast_df[roi_col].astype(float)
-        if vals.max() <= 1.0:
-            y = vals * 100.0
-            y_label = "ROI (%)"
-        else:
-            y = vals
-            y_label = "ROI Multiple"
+    y = forecast_df["ROI Multiple"].astype(float)
 
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=forecast_df[year_col], y=y, name=y_label))
+    fig.add_trace(go.Bar(x=forecast_df[year_col], y=y, name="ROI Multiple"))
     fig.update_layout(
-        title=f"3-Year Forecast {y_label}",
+        title="3-Year Forecast ROI Multiple",
         xaxis_title="Year",
-        yaxis_title=y_label
+        yaxis_title="ROI Multiple"
     )
     return fig
 
@@ -134,26 +106,31 @@ def macro_donations_allocation_chart(forecast_df: pd.DataFrame):
         df,
         values="Donations",
         names="Year",
-        title="Donations Forecast Across 3-Year Planning Horizon",
+        title="Donations Across 3-Year Planning Horizon",
         hole=0.35,
     )
     fig.update_layout(margin=dict(l=10, r=10, t=50, b=10))
     return fig
 
 
-def macro_scenario_comparison_chart(scenarios_df: pd.DataFrame):
-    fig = px.bar(
-        scenarios_df,
-        x="Scenario",
-        y="Net",
-        text="Net",
-        title="Scenario Comparison (3-Year Net Impact)"
-    )
-    fig.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+def macro_comparison_chart(forecast_df: pd.DataFrame):
+    year_col = _col(forecast_df, "Year", "year")
+    donations_col = _col(forecast_df, "Donations", "donations")
+    cost_col = _col(forecast_df, "Cost", "cost")
+    net_col = _col(forecast_df, "Net", "net")
+
+    plot_df = forecast_df[[year_col, donations_col, cost_col, net_col]].copy()
+    plot_df.columns = ["Year", "Donations", "Cost", "Net"]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=plot_df["Year"], y=plot_df["Donations"], name="Donations"))
+    fig.add_trace(go.Bar(x=plot_df["Year"], y=plot_df["Cost"], name="Cost"))
+    fig.add_trace(go.Bar(x=plot_df["Year"], y=plot_df["Net"], name="Net"))
     fig.update_layout(
-        yaxis_title="USD",
-        margin=dict(l=10, r=10, t=50, b=10),
-        showlegend=False
+        title="Year-by-Year Comparison: Donations vs Cost vs Net",
+        barmode="group",
+        xaxis_title="Year",
+        yaxis_title="USD"
     )
     return fig
 

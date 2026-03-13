@@ -20,7 +20,7 @@ except Exception:
 
 st.set_page_config(page_title="BJC Fundraising ROI Dashboard", layout="wide")
 st.title("BJC Fundraising ROI Dashboard")
-st.caption("Switch between operational tracking (Micro) and 3-year strategic forecasting (Macro).")
+st.caption("Switch between operational tracking (Micro) and 3-year strategic planning (Macro).")
 
 # Toggle: Micro vs Macro
 mode = st.sidebar.radio(
@@ -29,7 +29,6 @@ mode = st.sidebar.radio(
     index=0
 )
 
-# If you ever need to disable Word export in some environments, flip this to True
 DISABLE_WORD_EXPORT = False
 
 
@@ -37,74 +36,580 @@ DISABLE_WORD_EXPORT = False
 # GUIDE TAB
 # ======================================================================
 def guide_tab():
-    st.header("Guide: How to Use the Dashboard")
+    st.header("Guide")
 
-    st.subheader("What the dashboard does")
-    st.write(
-        "This dashboard helps BJC track fundraising performance by comparing **Funds Raised** against "
-        "**Costs incurred** over the same period. It provides ROI, cost-to-raise-$1, trends, comparisons, "
-        "and optional exports."
-    )
+    guide_micro, guide_macro = st.tabs(["Guide: Micro View", "Guide: Macro View"])
 
-    st.subheader("Micro View vs Macro View")
-    st.markdown(
-        """
-- **Micro View (Operational Tracking):** Uses detailed transaction-level donations + cost entries, lets you filter by date/channel/campaign/donor segment, and shows trends and comparisons.
-- **Macro 3-Year Strategic View:** Uses high-level planning inputs to allocate the current-year fundraising pool across the current year and next two years for strategic planning and optional budget comparison.
+    with guide_micro:
+        st.subheader("Purpose of Micro View")
+        st.markdown(
+            """
+Micro View is the **operational tracking** side of the dashboard.  
+It is designed to analyze actual donations and actual fundraising-related costs for a selected period.
+
+It helps answer questions such as:
+- How much did we raise?
+- How much did it cost?
+- What was the net result?
+- Which campaign codes performed best?
+- Which channels performed best?
+- Are donations coming more from new donors or returning donors?
 """
-    )
+        )
 
-    st.subheader("Micro View inputs (CSV uploads)")
-    st.markdown(
-        """
-**You upload 2 CSV files:**
-1) **Donations CSV** (EveryAction export or contribution report)
-2) **Costs CSV** (your template)
+        st.subheader("1) Upload Data (CSV)")
+        st.markdown(
+            """
+This section is in the sidebar.
 
-**Minimum required donation fields (the app auto-maps common names):**
-- Date (e.g., `Date Received`, `GiftDate`, `ContributionDate`)
-- Amount (e.g., `Amount`, `ContributionAmount`)
-- Donor identifier (e.g., `VANID`, `PersonID`)
-- Campaign / Source code (e.g., `Source Code`, `AppealCode`)
-- Channel (e.g., `Channel`, `Medium`, or `Payment Method`)
+You upload:
+1. **Donations CSV**
+2. **Costs CSV**
 
-**Common columns from BJC contribution reports that the app can accept:**
-- `Contribution ID`, `VANID`, `Contact Name`, `Date Received`, `Amount`, `Source Code`,
-  `Designation`, `Payment Method`, `Remaining Amount`, `Financial Batch`
+### Donations CSV
+This file should contain actual donation transactions.
 
-> Note: In the dashboard, **Campaign Code** is usually mapped from **Source Code**, and if a Channel column is missing, the app can use **Payment Method** as the Channel.
+Common fields include:
+- Date Received
+- Amount
+- VANID
+- Source Code
+- Payment Method
+- Contact Name
+- Contribution ID
+- Designation
+- Remaining Amount
+- Financial Batch
+
+The dashboard maps common donation field names into a standard structure.
+
+### Costs CSV
+This file should contain fundraising-related cost entries.
+
+Common fields include:
+- date
+- cost_amount
+- campaign_code
+- channel
+- cost_type
+
+This file is used to compare funds raised against the costs incurred in generating those funds.
 """
-    )
+        )
 
-    st.subheader("Filters explained")
-    st.markdown(
-        """
-- **Date range:** Limits both donations and costs to the same period.
-- **Channel:** Where the gift came from (e.g., Email, Event, Mail, Online). Sometimes it’s equivalent to payment method if that’s what’s available.
-- **Campaign code:** A source/appeal/campaign identifier (often “Source Code” in EveryAction exports). Useful for comparing fundraising initiatives.
-- **Donor segment:** A simple split into **New** vs **Returning** donors based on first gift date inside the uploaded dataset.
+        st.subheader("2) Filters")
+        st.markdown(
+            """
+This section is also in the sidebar.
+
+The filters determine which records are included in the KPIs, charts, and reports.
+
+### Date Range
+Limits the analysis to a selected time window.
+
+Use this to review:
+- a month
+- a quarter
+- a campaign period
+- a year
+
+### Channel
+Filters by fundraising source or method.
+
+Examples may include:
+- Email
+- Event
+- Online
+- Mail
+- Payment Method, if no separate channel field exists
+
+Use this to understand which source or method performed best.
+
+### Campaign Code
+Filters by source code / appeal code / campaign identifier.
+
+Use this to compare:
+- different fundraising appeals
+- different source codes
+- different initiatives
+
+### Donor Segment
+Splits donors into:
+- **New**
+- **Returning**
+
+This is based on the donor’s first appearance in the uploaded dataset.
+
+Use this to understand whether performance is driven more by donor acquisition or existing donor relationships.
 """
-    )
+        )
 
-    st.subheader("Interactive charts explained")
-    st.markdown(
-        """
-- **Trend:** Monthly Raised vs Costs vs Net, plus a waterfall summary (Raised → Costs → Net).
-- **Compare Campaigns:** Ranks campaign codes by dollars raised and compares Raised vs Costs per campaign.
-- **Compare Channels:** Compares Raised vs Costs by channel.
-- **Donor Mix:** Pie chart of dollars by donor segment (New vs Returning).
+        st.subheader("3) KPI Summary Row")
+        st.markdown(
+            r"""
+At the top of Micro View you will see five KPI cards.
+
+### Total Raised
+Sum of filtered donations.
+
+\[
+\text{Total Raised} = \sum \text{Donation Amount}
+\]
+
+### Total Costs
+Sum of filtered costs.
+
+\[
+\text{Total Costs} = \sum \text{Cost Amount}
+\]
+
+### Net Raised
+Difference between raised funds and costs.
+
+\[
+\text{Net Raised} = \text{Total Raised} - \text{Total Costs}
+\]
+
+### ROI
+Shows return relative to cost.
+
+\[
+\text{ROI} = \frac{\text{Net Raised}}{\text{Total Costs}}
+\]
+
+### Cost to Raise \$1
+Shows how much it costs to generate one dollar.
+
+\[
+\text{Cost to Raise \$1} = \frac{\text{Total Costs}}{\text{Total Raised}}
+\]
+
+Interpretation:
+- lower cost to raise $1 is generally better
+- higher ROI is generally better
 """
-    )
+        )
 
-    st.subheader("Reports & downloads")
-    st.markdown(
-        """
-- **Micro View exports:** Excel + Word
-- **Macro View exports:** Excel + PDF summary
+        st.subheader("4) Interactive Charts")
+        st.markdown(
+            """
+Micro View contains four chart tabs.
+
+### Trend
+This tab shows how fundraising changes over time.
+
+It includes:
+- **Monthly Trend line chart** for Raised, Costs, and Net
+- **Waterfall chart** showing Raised → Costs → Net
+
+Use this to identify:
+- strong months
+- weak months
+- periods where costs increased
+- whether fundraising performance is improving or declining over time
+
+### Compare Campaigns
+This tab compares campaign/source codes.
+
+It includes:
+- a **Top N slider**
+- a campaign-level performance table
+- a bar chart comparing Raised vs Costs by campaign code
+
+#### Top N (by Raised)
+This slider controls how many campaign codes are shown.
+
+Examples:
+- 5 = top 5 campaign codes by donations raised
+- 15 = top 15 campaign codes
+- 50 = top 50 campaign codes
+
+Use this when you want to focus only on the largest contributors.
+
+### Compare Channels
+This tab compares channels or fundraising methods.
+
+It includes:
+- a channel-level table
+- a bar chart comparing Raised vs Costs by channel
+
+Use this to determine:
+- which channel raises the most
+- which channel is most efficient
+- which channel is costing too much relative to what it brings in
+
+### Donor Mix
+This tab shows a pie chart of donations by donor segment.
+
+It answers:
+- how much of giving is coming from new donors
+- how much is coming from returning donors
 """
-    )
+        )
 
-    st.info("Tip: If you get empty charts, double-check that both Donations and Costs cover the same date window and have matching campaign/channel values.")
+        st.subheader("5) Generate Reports")
+        st.markdown(
+            """
+Micro View supports report exports.
+
+### Report Title
+Lets you choose the title for the exported report.
+
+### Interpretation / Notes
+Lets you add comments or context.
+
+### Download Excel Report
+Exports the filtered Micro View results into Excel.
+
+Useful for:
+- further analysis
+- finance review
+- sharing detailed figures
+
+### Download Word Report
+Exports a written report with results and notes.
+
+Useful for:
+- leadership summaries
+- meeting notes
+- written documentation
+"""
+        )
+
+        st.subheader("6) Preview Section")
+        st.markdown(
+            """
+At the bottom of Micro View there is a preview section.
+
+It shows the first 200 rows of:
+- filtered donations
+- filtered costs
+
+This helps validate:
+- that uploads worked correctly
+- that filters are working correctly
+- that the right fields were mapped
+
+If available, it can also display optional donation fields such as:
+- contribution_id
+- contact_name
+- designation
+- payment_method
+- remaining_amount
+- financial_batch
+"""
+        )
+
+    with guide_macro:
+        st.subheader("Purpose of Macro View")
+        st.markdown(
+            """
+Macro View is the **strategic planning** side of the dashboard.
+
+It is not meant to track individual transactions.  
+Instead, it uses high-level assumptions to model how current-year donations may translate into donations and costs over a 3-year planning horizon.
+
+It helps answer questions such as:
+- If we receive this level of donations in the current year, what might that mean over the next two years?
+- If some donors continue giving, how much value could that create over 3 years?
+- How much would it cost over that same horizon?
+- What changes under conservative, base, optimistic, or custom assumptions?
+"""
+        )
+
+        st.subheader("1) Scenario Presets")
+        st.markdown(
+            """
+Macro View begins with a scenario preset selector.
+
+### Base
+This is the neutral planning case.
+
+Use it when:
+- you want a normal or expected case
+- you want a baseline planning view
+
+### Conservative
+This is the downside case.
+
+It generally assumes:
+- lower donor continuation
+- higher cost burden
+- weaker donation outcome
+
+Use it for:
+- downside planning
+- stress testing
+
+### Optimistic
+This is the upside case.
+
+It generally assumes:
+- stronger donor continuation
+- lower cost pressure
+- stronger donation outcome
+
+Use it for:
+- growth planning
+- upside testing
+
+### Custom
+This lets leadership set assumptions manually.
+
+Use it when:
+- you want to test a specific scenario
+- you want assumptions that differ from the preset cases
+"""
+        )
+
+        st.subheader("2) Input Fields")
+        st.markdown(
+            """
+### Total Donations (Current Year)
+This is the current-year donation amount used as the starting point for the model.
+
+The macro model assumes that some percentage of these same donors may continue donating in Years 2 and 3.
+
+### Base Cost (BJC Total Cost in Current Year)
+This is the current-year base organizational cost used in the macro model.
+
+It acts as the cost base for:
+- Year 1 full cost calculation
+- Year 2 cost add-on
+- Year 3 cost add-on
+"""
+        )
+
+        st.subheader("3) Adjustable Assumptions")
+        st.markdown(
+            r"""
+These are the main planning levers in Macro View.
+
+### Donor Continuation Rate
+This is the percentage of current-year donors assumed to continue donating in later years.
+
+Formulas:
+
+\[
+\text{Year 2 Donations} = \text{Year 1 Donations} \times \text{Donor Continuation Rate}
+\]
+
+\[
+\text{Year 3 Donations} = \text{Year 2 Donations} \times \text{Donor Continuation Rate}
+\]
+
+Higher continuation:
+- increases future donations
+- improves net impact
+- improves ROI
+
+Lower continuation:
+- reduces future donations
+- weakens ROI
+
+### Development Margin (Year 1 only)
+This is the additional Year 1 cost for development effort.
+
+\[
+\text{Year 1 Cost} = \text{Base Cost} \times (1 + \text{Margin})
+\]
+
+Higher margin:
+- raises Year 1 cost
+- reduces Year 1 net
+- reduces total ROI
+
+### Cost Growth Add-on (Y2 & Y3)
+This is the cost add-on used for Years 2 and 3.
+
+\[
+\text{Year 2 Cost} = \text{Base Cost} \times \text{Cost Growth}
+\]
+
+\[
+\text{Year 3 Cost} = \text{Base Cost} \times \text{Cost Growth}
+\]
+
+Higher cost growth:
+- increases future cost burden
+- reduces ROI
+
+### Donation Shock
+Applies an upward or downward adjustment to donations.
+
+\[
+\text{Donations} \times (1 + \text{Donation Shock})
+\]
+
+Positive shock:
+- raises donations
+
+Negative shock:
+- lowers donations
+
+This is useful for testing:
+- changing fundraising conditions
+- external environment pressure
+- stronger or weaker donor response
+
+### Cost Shock
+Applies an upward or downward adjustment to costs.
+
+\[
+\text{Cost} \times (1 + \text{Cost Shock})
+\]
+
+Positive shock:
+- raises costs
+
+Negative shock:
+- lowers costs
+"""
+        )
+
+        st.subheader("4) KPI Summary Row")
+        st.markdown(
+            r"""
+Macro View shows five KPI cards.
+
+### Total Donations (3yr)
+Sum of Year 1, Year 2, and Year 3 donations.
+
+### Total Cost (3yr)
+Sum of Year 1, Year 2, and Year 3 modeled cost.
+
+### Total Net (3yr)
+\[
+\text{Total Donations} - \text{Total Cost}
+\]
+
+### ROI Multiple (3yr)
+\[
+\frac{\text{Total Donations}}{\text{Total Cost}}
+\]
+
+### Cost per \$1 (3yr)
+\[
+\frac{\text{Total Cost}}{\text{Total Donations}}
+\]
+"""
+        )
+
+        st.subheader("5) Charts Tab")
+        st.markdown(
+            """
+The Charts tab contains the main strategic visuals.
+
+### Donations Forecast Across 3 Years
+Shows how donations evolve across the 3-year planning horizon.
+
+Use this to explain:
+- current-year donation starting point
+- Year 2 continuation effect
+- Year 3 continuation effect
+
+### Scenario Comparison
+Compares:
+- Conservative
+- Base
+- Optimistic
+
+Shows:
+- Total Donations
+- Total Cost
+- Net
+- ROI Multiple
+
+Use this to explain downside risk, expected case, and upside potential.
+
+### ROI Sensitivity Map
+This heatmap shows how ROI changes when:
+- donor continuation changes
+- cost growth changes
+
+Use this to identify:
+- which assumptions matter most
+- where risk is concentrated
+- where ROI improves meaningfully
+
+### Forecast Trend & ROI by Year
+Shows:
+- Donations
+- Cost
+- Net
+- ROI by year
+
+Use this to understand:
+- whether value is front-loaded or future-loaded
+- whether costs fall sharply after Year 1
+- whether ROI improves over time
+
+### Forecast Table
+Shows the exact numbers behind the charts.
+
+Use this for:
+- validation
+- presentations
+- export support
+"""
+        )
+
+        st.subheader("6) Interpretation Tab")
+        st.markdown(
+            """
+This tab provides written interpretation of the Macro model.
+
+It summarizes:
+- total donations
+- total cost
+- total net
+- ROI
+- key assumptions
+
+It also shows model recommendations.
+
+Use this tab when:
+- presenting to leadership
+- creating written summaries
+- documenting assumptions and implications
+"""
+        )
+
+        st.subheader("7) Download Reports")
+        st.markdown(
+            """
+Macro View supports:
+
+### Excel Download
+Includes:
+- assumptions
+- KPI summary
+- forecast table
+- scenario table
+- sensitivity table
+- interpretation
+
+### PDF Download
+Provides a concise executive-style summary of the Macro view.
+"""
+        )
+
+        st.subheader("8) Practical Interpretation of Macro View")
+        st.markdown(
+            """
+Macro View is meant for planning, not transaction reconciliation.
+
+It should be explained as:
+- a strategic estimate
+- a scenario-based forward planning tool
+- a way to translate current-year donations into a 3-year planning conversation
+
+It is most useful when leadership wants to ask:
+- what happens if donor continuation changes?
+- what happens if cost growth changes?
+- what is our expected 3-year return under different cases?
+"""
+        )
 
 
 # ======================================================================
@@ -149,12 +654,10 @@ def micro_view():
     donations_df = ensure_datetime(donations_df, "date")
     costs_df = ensure_datetime(costs_df, "date")
 
-    # Add donor segment + month bucket
     donations_df = segment_donors_basic(donations_df)
     donations_df["month"] = donations_df["date"].apply(month_floor)
     costs_df["month"] = costs_df["date"].apply(month_floor)
 
-    # Filters
     st.sidebar.markdown("---")
     st.sidebar.header("2) Filters")
 
@@ -183,7 +686,6 @@ def micro_view():
     sel_campaigns = st.sidebar.multiselect("Campaign code", options=campaigns, default=campaigns)
     sel_segments = st.sidebar.multiselect("Donor segment", options=segments, default=segments)
 
-    # Filtered data
     d = donations_df[
         (donations_df["date"] >= start_dt) & (donations_df["date"] <= end_dt) &
         (donations_df["channel"].isin(sel_channels)) &
@@ -197,7 +699,6 @@ def micro_view():
         (costs_df["campaign_code"].isin(sel_campaigns))
     ].copy()
 
-    # KPIs
     kpis = compute_kpis(d, c)
 
     k1, k2, k3, k4, k5 = st.columns(5)
@@ -231,7 +732,6 @@ def micro_view():
     with tab4:
         st.plotly_chart(donor_mix_pie(d), use_container_width=True)
 
-    # Report generation
     st.markdown("---")
     st.subheader("Generate Reports")
 
@@ -307,7 +807,7 @@ with tabs[1]:
     if mode.startswith("Micro"):
         micro_view()
     else:
-        st.subheader("Macro 3-Year Strategic View (Investment Forecasting + Budget Comparison)")
+        st.subheader("Macro 3-Year Strategic View (Donations Forecasting)")
         if macro_view is None:
             st.error("Macro view failed to load.")
             if macro_import_error:

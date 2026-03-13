@@ -58,7 +58,6 @@ def donor_mix_pie(d: pd.DataFrame):
 # MACRO VIEW HELPERS
 # =========================
 def _col(df: pd.DataFrame, *candidates: str) -> str:
-    """Return the first column name found in df from candidates."""
     for c in candidates:
         if c in df.columns:
             return c
@@ -69,33 +68,23 @@ def _col(df: pd.DataFrame, *candidates: str) -> str:
 # MACRO VIEW CHARTS
 # =========================
 def macro_3yr_trend_line(forecast_df: pd.DataFrame):
-    """
-    Expects forecast_df with at least:
-    Year, Donations, Cost, Net
-    """
-    year_col = _col(forecast_df, "year", "Year")
-    donations_col = _col(forecast_df, "Donations", "donations", "Revenue", "revenue", "Raised", "raised")
-    cost_col = _col(forecast_df, "Cost", "cost", "Costs")
+    year_col = _col(forecast_df, "Year", "year")
+    donations_col = _col(forecast_df, "Donations", "donations")
+    cost_col = _col(forecast_df, "Cost", "cost")
     net_col = _col(forecast_df, "Net", "net")
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=forecast_df[year_col],
-        y=forecast_df[donations_col],
-        mode="lines+markers",
-        name="Donations"
+        x=forecast_df[year_col], y=forecast_df[donations_col],
+        mode="lines+markers", name="Donations"
     ))
     fig.add_trace(go.Scatter(
-        x=forecast_df[year_col],
-        y=forecast_df[cost_col],
-        mode="lines+markers",
-        name="Cost"
+        x=forecast_df[year_col], y=forecast_df[cost_col],
+        mode="lines+markers", name="Cost"
     ))
     fig.add_trace(go.Scatter(
-        x=forecast_df[year_col],
-        y=forecast_df[net_col],
-        mode="lines+markers",
-        name="Net"
+        x=forecast_df[year_col], y=forecast_df[net_col],
+        mode="lines+markers", name="Net"
     ))
     fig.update_layout(
         title="3-Year Forecast: Donations vs Cost vs Net",
@@ -106,10 +95,7 @@ def macro_3yr_trend_line(forecast_df: pd.DataFrame):
 
 
 def macro_roi_bar(forecast_df: pd.DataFrame):
-    """
-    Shows ROI Multiple or ROI % by year, depending on available column.
-    """
-    year_col = _col(forecast_df, "year", "Year")
+    year_col = _col(forecast_df, "Year", "year")
 
     if "ROI Multiple" in forecast_df.columns:
         y = forecast_df["ROI Multiple"].astype(float)
@@ -137,98 +123,9 @@ def macro_roi_bar(forecast_df: pd.DataFrame):
     return fig
 
 
-def macro_cost_per_dollar_bar(forecast_df: pd.DataFrame):
-    """
-    Optional utility if you later add Cost per $1 by year to forecast_df.
-    """
-    year_col = _col(forecast_df, "year", "Year")
-    cpd_col = _col(
-        forecast_df,
-        "cost_per_1", "Cost per $1", "Cost per $1 Raised", "Cost per $1 (3yr)"
-    )
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=forecast_df[year_col], y=forecast_df[cpd_col], name="Cost per $1"))
-    fig.update_layout(
-        title="Cost Efficiency: Cost per $1 by Year",
-        xaxis_title="Year",
-        yaxis_title="USD"
-    )
-    return fig
-
-
-def macro_budget_vs_forecast_bar(budget_compare_df: pd.DataFrame):
-    """
-    Expected columns:
-    - Year
-    - Budget Donations / Budget Revenue
-    - Budget Cost
-    - Donations / Revenue
-    - Cost
-    """
-    year_col = _col(budget_compare_df, "Year", "year")
-    bud_don = _col(
-        budget_compare_df,
-        "Budget Donations", "budget_donations", "BudgetDonations",
-        "Budget Revenue", "budget_revenue", "BudgetRevenue"
-    )
-    fc_don = _col(
-        budget_compare_df,
-        "Donations", "donations", "Revenue", "revenue"
-    )
-    bud_cost = _col(budget_compare_df, "Budget Cost", "budget_cost", "BudgetCost")
-    fc_cost = _col(budget_compare_df, "Cost", "cost")
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=budget_compare_df[year_col], y=budget_compare_df[bud_don], name="Budget Donations"))
-    fig.add_trace(go.Bar(x=budget_compare_df[year_col], y=budget_compare_df[fc_don], name="Forecast Donations"))
-    fig.add_trace(go.Bar(x=budget_compare_df[year_col], y=budget_compare_df[bud_cost], name="Budget Cost"))
-    fig.add_trace(go.Bar(x=budget_compare_df[year_col], y=budget_compare_df[fc_cost], name="Forecast Cost"))
-    fig.update_layout(
-        title="Budget vs Forecast (Donations & Cost)",
-        barmode="group",
-        xaxis_title="Year",
-        yaxis_title="USD"
-    )
-    return fig
-
-
-def macro_variance_bars(budget_compare_df: pd.DataFrame):
-    """
-    Expected columns:
-    - Year
-    - Donations Var / Revenue Var
-    - Cost Var
-    - Net Var
-    """
-    year_col = _col(budget_compare_df, "Year", "year")
-    don_var = _col(
-        budget_compare_df,
-        "Donations Var", "donations_var", "Revenue Var", "revenue_var"
-    )
-    cost_var = _col(budget_compare_df, "Cost Var", "cost_var")
-    net_var = _col(budget_compare_df, "Net Var", "net_var")
-
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=budget_compare_df[year_col], y=budget_compare_df[don_var], name="Donations Var"))
-    fig.add_trace(go.Bar(x=budget_compare_df[year_col], y=budget_compare_df[cost_var], name="Cost Var"))
-    fig.add_trace(go.Bar(x=budget_compare_df[year_col], y=budget_compare_df[net_var], name="Net Var"))
-    fig.update_layout(
-        title="Variance vs Budget (Forecast - Budget)",
-        barmode="group",
-        xaxis_title="Year",
-        yaxis_title="USD"
-    )
-    return fig
-
-
 def macro_donations_allocation_chart(forecast_df: pd.DataFrame):
-    """
-    Shows how current-year donations translate across the 3-year planning horizon.
-    Expects columns: Year, Donations
-    """
     year_col = _col(forecast_df, "Year", "year")
-    donations_col = _col(forecast_df, "Donations", "donations", "Revenue", "revenue")
+    donations_col = _col(forecast_df, "Donations", "donations")
 
     df = forecast_df[[year_col, donations_col]].copy()
     df.columns = ["Year", "Donations"]
@@ -245,12 +142,6 @@ def macro_donations_allocation_chart(forecast_df: pd.DataFrame):
 
 
 def macro_scenario_comparison_chart(scenarios_df: pd.DataFrame):
-    """
-    scenarios_df expected columns:
-    - Scenario
-    - Net
-    - optionally Total Donations, Total Cost, ROI Multiple
-    """
     fig = px.bar(
         scenarios_df,
         x="Scenario",
@@ -268,12 +159,6 @@ def macro_scenario_comparison_chart(scenarios_df: pd.DataFrame):
 
 
 def macro_roi_sensitivity_heatmap(pivot: pd.DataFrame, title: str = "ROI Sensitivity Map") -> go.Figure:
-    """
-    Expects a pivot table where:
-    - index = Donor Continuation Rate (or similar)
-    - columns = Cost Growth
-    - values = ROI Multiple
-    """
     x = [float(c) for c in pivot.columns]
     y = [float(i) for i in pivot.index]
     z = pivot.values
@@ -286,7 +171,7 @@ def macro_roi_sensitivity_heatmap(pivot: pd.DataFrame, title: str = "ROI Sensiti
             colorbar=dict(title="ROI Multiple"),
             hovertemplate=(
                 "Cost Growth: %{x:.2f}<br>"
-                "Continuation Rate: %{y:.2f}<br>"
+                "Donor Continuation Rate: %{y:.2f}<br>"
                 "ROI: %{z:.2f}x<extra></extra>"
             ),
         )

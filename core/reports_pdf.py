@@ -19,13 +19,7 @@ def _pct(x) -> str:
         return str(x)
 
 
-def build_macro_pdf(
-    title: str,
-    kpis: dict,
-    assumptions: dict,
-    recs: list,
-    forecast_df,
-) -> bytes:
+def build_macro_pdf(title: str, kpis: dict, assumptions: dict, recs: list, forecast_df) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
     styles = getSampleStyleSheet()
@@ -36,15 +30,13 @@ def build_macro_pdf(
     story.append(Spacer(1, 12))
 
     intro = (
-        "This report summarizes the 3-year strategic planning forecast for donations and cost. "
-        "The model assumes that a percentage of current-year donors will continue donating in Year 2 and again in Year 3, "
-        "while cost follows the selected Year 1 development margin and Year 2/Year 3 cost growth assumptions."
+        "This report summarizes the 3-year donations planning forecast. "
+        "The model assumes that Year 2 and Year 3 donations are each a percentage of Year 1 donations from retained donors, excluding any new donors in Years 2 and 3."
     )
     story.append(Paragraph(intro, styles["BodyText"]))
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("KPI Summary", styles["Heading2"]))
-
     kpi_rows = [
         ["Metric", "Value"],
         ["Total Donations (3yr)", _money(kpis.get("Total Donations (3yr)", 0))],
@@ -54,7 +46,6 @@ def build_macro_pdf(
         ["ROI % (3yr)", _pct(kpis.get("ROI % (3yr)", 0))],
         ["Cost per $1 (3yr)", f"${float(kpis.get('Cost per $1 (3yr)', 0)):.2f}"],
     ]
-
     kpi_table = Table(kpi_rows, hAlign="LEFT")
     kpi_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
@@ -66,7 +57,6 @@ def build_macro_pdf(
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("Assumptions", styles["Heading2"]))
-
     assumption_rows = [["Assumption", "Value"]]
     for k, v in assumptions.items():
         if isinstance(v, float):
@@ -89,9 +79,7 @@ def build_macro_pdf(
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("3-Year Forecast", styles["Heading2"]))
-
     forecast_rows = [["Year", "Donations", "Cost", "Net", "ROI Multiple"]]
-
     for _, row in forecast_df.iterrows():
         forecast_rows.append([
             str(row.get("Year", "")),
@@ -111,13 +99,10 @@ def build_macro_pdf(
     story.append(forecast_table)
     story.append(Spacer(1, 12))
 
-    story.append(Paragraph("Interpretation and Recommendations", styles["Heading2"]))
-    if recs:
-        for r in recs:
-            story.append(Paragraph(f"• {r}", styles["BodyText"]))
-            story.append(Spacer(1, 6))
-    else:
-        story.append(Paragraph("No recommendations were generated.", styles["BodyText"]))
+    story.append(Paragraph("Recommendations", styles["Heading2"]))
+    for r in recs:
+        story.append(Paragraph(f"• {r}", styles["BodyText"]))
+        story.append(Spacer(1, 6))
 
     doc.build(story)
     pdf = buffer.getvalue()

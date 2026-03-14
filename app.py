@@ -149,6 +149,7 @@ It assumes:
 - Year 3 donations are also a percentage of Year 1 donations from retained donors
 - new donors in Years 2 and 3 are excluded from the model
 - cost follows a Year 1 margin and Years 2 and 3 cost-growth add-ons
+- cost growth can increase or decrease
 """
         )
 
@@ -183,6 +184,8 @@ This is the Year 1 cost base.
 \[
 \text{Year 3 Cost} = \text{Base Cost} \times \text{Cost Growth}
 \]
+
+A negative cost growth value means cost reduction in Years 2 and 3.
 """
         )
 
@@ -429,7 +432,6 @@ with tabs[1]:
     if mode.startswith("Micro"):
         micro_view()
     else:
-        st.subheader("Macro 3-Year Strategic View (Donations Forecasting)")
         if macro_view is None:
             st.error("Macro view failed to load.")
             if macro_import_error:

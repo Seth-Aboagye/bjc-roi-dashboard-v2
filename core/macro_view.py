@@ -35,7 +35,7 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
         f"That corresponds to an overall **ROI of {roi_mult:.2f}x** (approximately **{roi_pct*100:,.1f}%**) and a **cost per $1 of ${c_per_1:.2f}**."
     )
     lines.append(
-        f"Assumptions used: **Donor Continuation Rate = {float(assumptions['Donor Continuation Rate']):.0%}**, **Development Margin (Year 1 only) = {float(assumptions['Development Margin (Y1 only)']):.0%}**, **Cost Growth Add-on (Years 2 and 3) = {float(assumptions['Cost Growth Add-on (Y2 & Y3)']):.0%} of base cost**, **Donation Shock = {float(assumptions['Donation Shock']):+.0%}**, and **Cost Shock = {float(assumptions['Cost Shock']):+.0%}**."
+        f"Assumptions used: **Donor Continuation Rate = {float(assumptions['Donor Continuation Rate']):.0%}**, **Development Margin (Year 1 only) = {float(assumptions['Development Margin (Y1 only)']):.0%}**, **Cost Growth Add-on (Years 2 and 3) = {float(assumptions['Cost Growth Add-on (Y2 & Y3)']):+.0%} of base cost**, **Donation Shock = {float(assumptions['Donation Shock']):+.0%}**, and **Cost Shock = {float(assumptions['Cost Shock']):+.0%}**."
     )
 
     if roi_mult < 1.0:
@@ -50,7 +50,7 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
 
 def _build_sensitivity_pivot(base_inputs: MacroInputs) -> pd.DataFrame:
     continuation_vals = [0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
-    cg_vals = [0.00, 0.02, 0.05, 0.08, 0.10, 0.15, 0.20]
+    cg_vals = [-0.10, -0.05, 0.00, 0.05, 0.10, 0.15, 0.20]
 
     rows = []
     for cont in continuation_vals:
@@ -84,7 +84,7 @@ def macro_view():
     c1, c2, c3, c4 = st.columns(4)
     donor_continuation = c1.slider("Donor Continuation Rate", 0.0, 1.0, 0.40, 0.05)
     margin = c2.slider("Development Margin (Year 1 only)", 0.0, 0.50, 0.20, 0.01)
-    cost_growth = c3.slider("Cost Growth Add-on (Years 2 & 3)", 0.0, 0.25, 0.05, 0.01)
+    cost_growth = c3.slider("Cost Growth Add-on (Years 2 & 3)", -0.25, 0.25, 0.05, 0.01)
     donation_shock = c4.slider("Donation Shock", -0.30, 0.30, 0.00, 0.01)
 
     with st.expander("Advanced"):

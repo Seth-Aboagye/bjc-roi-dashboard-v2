@@ -32,6 +32,8 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
     - Year 1 Cost = base_cost_y1 * (1 + margin)
     - Year 2 Cost = base_cost_y1 * cost_growth
     - Year 3 Cost = base_cost_y1 * cost_growth
+
+    Negative cost growth is allowed to model cost reduction.
     """
 
     d1 = float(inputs.total_donations_y1)
@@ -47,8 +49,8 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
     donations3 *= donation_mult
 
     c = float(inputs.base_cost_y1)
-    m = max(0.0, float(inputs.margin))
-    g = max(0.0, float(inputs.cost_growth))
+    m = float(inputs.margin)
+    g = float(inputs.cost_growth)
 
     cost1 = c * (1.0 + m)
     cost2 = c * g
@@ -65,15 +67,15 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
         "Cost": [cost1, cost2, cost3],
     })
     df["Net"] = df["Donations"] - df["Cost"]
-    df["ROI Multiple"] = df.apply(lambda r: _safe_div(r["Donations"], r["Cost"]), axis=1)
+    df["ROI Multiple"] = df.apply(lambda r: _safe_div(r["Donations"], r["Cost"]) if r["Cost"] > 0 else 0.0, axis=1)
     df["ROI %"] = df["ROI Multiple"] - 1.0
 
     total_don = float(df["Donations"].sum())
     total_cost = float(df["Cost"].sum())
     total_net = float(df["Net"].sum())
-    roi_multiple_3yr = _safe_div(total_don, total_cost)
+    roi_multiple_3yr = _safe_div(total_don, total_cost) if total_cost > 0 else 0.0
     roi_pct_3yr = roi_multiple_3yr - 1.0
-    cost_per_1 = _safe_div(total_cost, total_don)
+    cost_per_1 = _safe_div(total_cost, total_don) if total_don > 0 else 0.0
 
     kpis = {
         "Total Donations (3yr)": total_don,
@@ -92,6 +94,13 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
         recommendations.append("Donor continuation is moderate. Small improvements in retention could produce a meaningful gain in long-term donations.")
     else:
         recommendations.append("Donor continuation is strong. The focus should be on sustaining donor relationships and protecting renewal rates.")
+
+    if g < 0:
+        recommendations.append("Cost growth is negative, which means the model assumes cost reduction in Years 2 and 3.")
+    elif g == 0:
+        recommendations.append("Cost growth is flat in Years 2 and 3, meaning no extra add-on cost is assumed beyond Year 1.")
+    else:
+        recommendations.append("Cost growth is positive in Years 2 and 3, which increases future cost burden.")
 
     if roi_multiple_3yr < 1.0:
         recommendations.append("The model shows costs exceed donations over the 3-year horizon. Review Year 1 margin and donor continuation assumptions.")

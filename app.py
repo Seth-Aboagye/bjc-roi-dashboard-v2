@@ -146,7 +146,7 @@ Macro View is the strategic planning side of the dashboard.
 It assumes:
 - Year 1 donations are known
 - Year 2 donations are a percentage of Year 1 donations from retained donors
-- Year 3 donations are also a percentage of Year 1 donations from retained donors
+- Year 3 donations are a percentage of Year 2 donations from retained donors
 - new donors in Years 2 and 3 are excluded from the model
 - cost follows a Year 1 margin and Years 2 and 3 cost-growth add-ons
 - cost growth can increase or decrease
@@ -168,7 +168,7 @@ This is the Year 1 cost base.
 \]
 
 \[
-\text{Year 3 Donations} = \text{Year 1 Donations} \times \text{Donor Continuation Rate}
+\text{Year 3 Donations} = \text{Year 2 Donations} \times \text{Donor Continuation Rate}
 \]
 
 ### Development Margin (Year 1 only)
@@ -225,7 +225,7 @@ Shows the share of 3-year donations by year.
 Compares Donations, Cost, and Net by year.
 
 ### ROI Sensitivity Map
-Shows how ROI changes when donor continuation and cost growth change.
+Shows how ROI changes when donor continuation and cost growth change. Because continuation compounds year to year, changes in retention can materially change long-term donations.
 
 ### Forecast Trend & ROI by Year
 Shows Donations, Cost, Net, and ROI by year.

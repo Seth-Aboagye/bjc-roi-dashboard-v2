@@ -26,7 +26,7 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
 
     lines = []
     lines.append(
-        "This Macro View is a strategic planning tool. It assumes that Year 2 and Year 3 donations are each a percentage of Year 1 donations from retained donors, excluding any new donors in Years 2 and 3."
+    "This Macro View is a strategic planning tool. It assumes that Year 2 donations are a percentage of Year 1 donations from retained donors, and Year 3 donations are a percentage of Year 2 donations from retained donors, excluding any new donors in Years 2 and 3."
     )
     lines.append(
         f"Over the 3-year horizon, the model projects **${total_don:,.0f}** in donations against **${total_cost:,.0f}** in modeled cost, resulting in a net of **${total_net:,.0f}**."

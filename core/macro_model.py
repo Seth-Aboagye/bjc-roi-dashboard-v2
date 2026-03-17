@@ -30,8 +30,8 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
 
     Cost logic:
     - Year 1 Cost = base_cost_y1 * (1 + margin)
-    - Year 2 Cost = base_cost_y1 * cost_growth
-    - Year 3 Cost = base_cost_y1 * cost_growth
+    - Year 2 Cost = base_cost_y1 * (1 + cost_growth)
+    - Year 3 Cost = Year 2 Cost * (1 + cost_growth)
 
     Negative cost growth is allowed to model cost reduction.
     """
@@ -48,13 +48,13 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
     donations2 *= donation_mult
     donations3 *= donation_mult
 
-    c = float(inputs.base_cost_y1)
-    m = float(inputs.margin)
-    g = float(inputs.cost_growth)
+    base_cost = float(inputs.base_cost_y1)
+    margin = float(inputs.margin)
+    growth = float(inputs.cost_growth)
 
-    cost1 = c * (1.0 + m)
-    cost2 = c * g
-    cost3 = c * g
+    cost1 = base_cost * (1.0 + margin)
+    cost2 = base_cost * (1.0 + growth)
+    cost3 = cost2 * (1.0 + growth)
 
     cost_mult = 1.0 + float(inputs.cost_shock)
     cost1 *= cost_mult
@@ -105,25 +105,25 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
         )
 
     recommendations.append(
-        "The donation model assumes Year 2 comes from retained Year 1 donors, while Year 3 comes from retained Year 2 donors. This creates a declining continuation pattern over time."
+        "The donation model assumes Year 2 comes from retained Year 1 donors, while Year 3 comes from retained Year 2 donors."
     )
 
-    if g < 0:
+    if growth < 0:
         recommendations.append(
-            "Cost growth is negative, which means the model assumes cost reduction in Years 2 and 3."
+            "Cost growth is negative, which means the model assumes cost reduction after Year 1."
         )
-    elif g == 0:
+    elif growth == 0:
         recommendations.append(
-            "Cost growth is flat in Years 2 and 3, meaning no extra add-on cost is assumed beyond Year 1."
+            "Cost growth is flat, meaning Year 2 stays at the base-cost level and Year 3 remains unchanged from Year 2."
         )
     else:
         recommendations.append(
-            "Cost growth is positive in Years 2 and 3, which increases future cost burden."
+            "Cost growth is positive and compounds after Year 1, which increases the long-term cost burden."
         )
 
     if roi_multiple_3yr < 1.0:
         recommendations.append(
-            "The model shows costs exceed donations over the 3-year horizon. Review Year 1 margin and donor continuation assumptions."
+            "The model shows costs exceed donations over the 3-year horizon. Review Year 1 margin, ongoing cost growth, and donor continuation assumptions."
         )
     elif roi_multiple_3yr < 2.0:
         recommendations.append(

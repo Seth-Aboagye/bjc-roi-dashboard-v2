@@ -30,12 +30,13 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
 
     Cost logic:
     - Year 1 Cost = base_cost_y1 * (1 + margin)
-    - Year 2 Cost = base_cost_y1 * (1 + cost_growth)
+    - Year 2 Cost = Year 1 Cost * (1 + cost_growth)
     - Year 3 Cost = Year 2 Cost * (1 + cost_growth)
 
     Negative cost growth is allowed to model cost reduction.
     """
 
+    # Donations
     d1 = float(inputs.total_donations_y1)
     cont = max(0.0, min(1.0, float(inputs.donor_continuation_rate)))
 
@@ -48,24 +49,27 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
     donations2 *= donation_mult
     donations3 *= donation_mult
 
+    # Costs
     base_cost = float(inputs.base_cost_y1)
     margin = float(inputs.margin)
     growth = float(inputs.cost_growth)
 
-    cost1 = base_cost * (1.0 + margin)
-    cost2 = base_cost * (1.0 + growth)
-    cost3 = cost2 * (1.0 + growth)
+    cost1 = base_cost * (1 + margin)
+    cost2 = cost1 * (1 + growth)
+    cost3 = cost2 * (1 + growth)
 
     cost_mult = 1.0 + float(inputs.cost_shock)
     cost1 *= cost_mult
     cost2 *= cost_mult
     cost3 *= cost_mult
 
+    # Forecast table
     df = pd.DataFrame({
         "Year": ["Year 1", "Year 2", "Year 3"],
         "Donations": [donations1, donations2, donations3],
         "Cost": [cost1, cost2, cost3],
     })
+
     df["Net"] = df["Donations"] - df["Cost"]
     df["ROI Multiple"] = df.apply(
         lambda r: _safe_div(r["Donations"], r["Cost"]) if r["Cost"] > 0 else 0.0,
@@ -73,9 +77,11 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
     )
     df["ROI %"] = df["ROI Multiple"] - 1.0
 
+    # KPIs
     total_don = float(df["Donations"].sum())
     total_cost = float(df["Cost"].sum())
     total_net = float(df["Net"].sum())
+
     roi_multiple_3yr = _safe_div(total_don, total_cost) if total_cost > 0 else 0.0
     roi_pct_3yr = roi_multiple_3yr - 1.0
     cost_per_1 = _safe_div(total_cost, total_don) if total_don > 0 else 0.0
@@ -89,6 +95,7 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
         "Cost per $1 (3yr)": cost_per_1,
     }
 
+    # Recommendations
     recommendations = []
 
     if cont < 0.40:
@@ -97,33 +104,33 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
         )
     elif cont < 0.60:
         recommendations.append(
-            "Donor continuation is moderate. Small improvements in retention could produce a meaningful gain in long-term donations."
+            "Donor continuation is moderate. Small improvements in retention could produce meaningful gains in long-term donations."
         )
     else:
         recommendations.append(
-            "Donor continuation is strong. The focus should be on sustaining donor relationships and protecting renewal rates."
+            "Donor continuation is strong. Focus on sustaining donor relationships and protecting renewal rates."
         )
 
     recommendations.append(
-        "The donation model assumes Year 2 comes from retained Year 1 donors, while Year 3 comes from retained Year 2 donors."
+        "The donation model assumes Year 2 comes from retained Year 1 donors, while Year 3 comes from retained Year 2 donors. This creates a declining continuation pattern over time."
     )
 
     if growth < 0:
         recommendations.append(
-            "Cost growth is negative, which means the model assumes cost reduction after Year 1."
+            "Cost growth is negative, meaning the model assumes cost reduction in Years 2 and 3."
         )
     elif growth == 0:
         recommendations.append(
-            "Cost growth is flat, meaning Year 2 stays at the base-cost level and Year 3 remains unchanged from Year 2."
+            "Cost growth is flat across Years 2 and 3."
         )
     else:
         recommendations.append(
-            "Cost growth is positive and compounds after Year 1, which increases the long-term cost burden."
+            "Cost growth compounds year over year. Monitoring operational efficiency will be important."
         )
 
     if roi_multiple_3yr < 1.0:
         recommendations.append(
-            "The model shows costs exceed donations over the 3-year horizon. Review Year 1 margin, ongoing cost growth, and donor continuation assumptions."
+            "The model shows costs exceed donations over the 3-year horizon. Review margin and donor continuation assumptions."
         )
     elif roi_multiple_3yr < 2.0:
         recommendations.append(

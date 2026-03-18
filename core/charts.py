@@ -155,7 +155,7 @@ def macro_roi_sensitivity_heatmap(pivot: pd.DataFrame, title: str = "ROI Sensiti
     )
     fig.update_layout(
         title=title,
-        xaxis_title="Cost Growth Add-on (as % of base cost)",
+        xaxis_title="Cost Growth Add-on (as % of prior year cost)",
         yaxis_title="Donor Continuation Rate",
         margin=dict(l=10, r=10, t=50, b=10),
     )

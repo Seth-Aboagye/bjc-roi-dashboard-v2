@@ -30,8 +30,8 @@ def build_macro_pdf(title: str, kpis: dict, assumptions: dict, recs: list, forec
     story.append(Spacer(1, 12))
 
     intro = (
-    "This report summarizes the 3-year donations planning forecast. "
-    "The model assumes that Year 2 donations are a percentage of Year 1 donations from retained donors, and Year 3 donations are a percentage of Year 2 donations from retained donors, excluding any new donors in Years 2 and 3."
+        "This report summarizes the 3-year donations planning forecast. "
+        "The model assumes that Year 2 donations are a percentage of Year 1 donations from retained donors, and Year 3 donations are a percentage of Year 2 donations from retained donors."
     )
     story.append(Paragraph(intro, styles["BodyText"]))
     story.append(Spacer(1, 12))

@@ -26,17 +26,18 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
     - Year 1 Donations = total_donations_y1
     - Year 2 Donations = Year 1 Donations * donor_continuation_rate
     - Year 3 Donations = Year 2 Donations * donor_continuation_rate
-      (excludes any new donors in Years 2 and 3)
 
     Cost logic:
     - Year 1 Cost = base_cost_y1 * (1 + margin)
-    - Year 2 Cost = Year 1 Cost * (1 + cost_growth)
+    - Year 2 Cost = base_cost_y1 * (1 + cost_growth)
     - Year 3 Cost = Year 2 Cost * (1 + cost_growth)
 
     Negative cost growth is allowed to model cost reduction.
     """
 
-    # Donations
+    # --------------------------
+    # DONATIONS
+    # --------------------------
     d1 = float(inputs.total_donations_y1)
     cont = max(0.0, min(1.0, float(inputs.donor_continuation_rate)))
 
@@ -49,13 +50,15 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
     donations2 *= donation_mult
     donations3 *= donation_mult
 
-    # Costs
+    # --------------------------
+    # COSTS
+    # --------------------------
     base_cost = float(inputs.base_cost_y1)
     margin = float(inputs.margin)
     growth = float(inputs.cost_growth)
 
     cost1 = base_cost * (1 + margin)
-    cost2 = cost1 * (1 + growth)
+    cost2 = base_cost * (1 + growth)
     cost3 = cost2 * (1 + growth)
 
     cost_mult = 1.0 + float(inputs.cost_shock)
@@ -63,7 +66,9 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
     cost2 *= cost_mult
     cost3 *= cost_mult
 
-    # Forecast table
+    # --------------------------
+    # FORECAST TABLE
+    # --------------------------
     df = pd.DataFrame({
         "Year": ["Year 1", "Year 2", "Year 3"],
         "Donations": [donations1, donations2, donations3],
@@ -77,7 +82,9 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
     )
     df["ROI %"] = df["ROI Multiple"] - 1.0
 
-    # KPIs
+    # --------------------------
+    # KPI SUMMARY
+    # --------------------------
     total_don = float(df["Donations"].sum())
     total_cost = float(df["Cost"].sum())
     total_net = float(df["Net"].sum())
@@ -95,7 +102,9 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
         "Cost per $1 (3yr)": cost_per_1,
     }
 
-    # Recommendations
+    # --------------------------
+    # RECOMMENDATIONS
+    # --------------------------
     recommendations = []
 
     if cont < 0.40:
@@ -112,7 +121,7 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
         )
 
     recommendations.append(
-        "The donation model assumes Year 2 comes from retained Year 1 donors, while Year 3 comes from retained Year 2 donors. This creates a declining continuation pattern over time."
+        "The donation model assumes Year 2 comes from retained Year 1 donors, while Year 3 comes from retained Year 2 donors."
     )
 
     if growth < 0:
@@ -125,12 +134,12 @@ def build_macro_forecast(inputs: MacroInputs) -> Dict[str, Any]:
         )
     else:
         recommendations.append(
-            "Cost growth compounds year over year. Monitoring operational efficiency will be important."
+            "Year 2 cost is calculated from the base cost using the cost growth rate, while Year 3 cost grows from Year 2."
         )
 
     if roi_multiple_3yr < 1.0:
         recommendations.append(
-            "The model shows costs exceed donations over the 3-year horizon. Review margin and donor continuation assumptions."
+            "The model shows costs exceed donations over the 3-year horizon. Review margin, cost growth, and donor continuation assumptions."
         )
     elif roi_multiple_3yr < 2.0:
         recommendations.append(

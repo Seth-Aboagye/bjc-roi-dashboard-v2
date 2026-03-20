@@ -147,7 +147,9 @@ It assumes:
 - Year 1 donations are known
 - Year 2 donations are a percentage of Year 1 donations from retained donors
 - Year 3 donations are a percentage of Year 2 donations from retained donors
-- cost follows a Year 1 margin, then a reset-to-base growth calculation in Year 2, then growth from Year 2 into Year 3
+- Year 1 cost equals base cost plus organizational margin
+- Year 2 cost equals cost growth multiplied by Year 1 cost
+- Year 3 cost equals cost growth multiplied by the sum of Year 1 and Year 2 cost
 - cost growth can increase or decrease
 """
         )
@@ -170,18 +172,18 @@ This is the Year 1 cost base.
 \text{Year 3 Donations} = \text{Year 2 Donations} \times \text{Donor Continuation Rate}
 \]
 
-### Development Margin (Year 1 only)
+### Organizational Margin (Year 1 only)
 \[
-\text{Year 1 Cost} = \text{Base Cost} \times (1 + \text{Margin})
+\text{Year 1 Cost} = \text{Base Cost} + (\text{Organizational Margin} \times \text{Base Cost})
 \]
 
 ### Cost Growth Add-on
 \[
-\text{Year 2 Cost} = \text{Base Cost} \times (1 + \text{Cost Growth})
+\text{Year 2 Cost} = \text{Cost Growth} \times \text{Year 1 Cost}
 \]
 
 \[
-\text{Year 3 Cost} = \text{Year 2 Cost} \times (1 + \text{Cost Growth})
+\text{Year 3 Cost} = \text{Cost Growth} \times (\text{Year 1 Cost} + \text{Year 2 Cost})
 \]
 
 A negative cost growth value means cost reduction.
@@ -224,7 +226,7 @@ Shows the share of 3-year donations by year.
 Compares Donations, Cost, and Net by year.
 
 ### ROI Sensitivity Map
-Shows how ROI changes when donor continuation and cost growth change. Because donor continuation compounds year to year, improvements in retention can significantly increase long-term donations.
+Shows how ROI changes when donor continuation and cost growth change.
 
 ### Forecast Trend & ROI by Year
 Shows Donations, Cost, Net, and ROI by year.

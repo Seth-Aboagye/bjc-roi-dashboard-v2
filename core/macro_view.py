@@ -29,21 +29,30 @@ def macro_interpretation(model: dict, assumptions: dict) -> str:
         "This Macro View is a strategic planning tool. It assumes that Year 2 donations are a percentage of Year 1 donations from retained donors, and Year 3 donations are a percentage of Year 2 donations from retained donors."
     )
     lines.append(
+        "For cost, Year 1 equals base cost plus development margin, Year 2 resets to base cost plus cost growth, and Year 3 grows from Year 2 using the same cost growth rate."
+    )
+    lines.append(
         f"Over the 3-year horizon, the model projects **${total_don:,.0f}** in donations against **${total_cost:,.0f}** in modeled cost, resulting in a net of **${total_net:,.0f}**."
     )
     lines.append(
         f"That corresponds to an overall **ROI of {roi_mult:.2f}x** (approximately **{roi_pct*100:,.1f}%**) and a **cost per $1 of ${c_per_1:.2f}**."
     )
     lines.append(
-        f"Assumptions used: **Donor Continuation Rate = {float(assumptions['Donor Continuation Rate']):.0%}**, **Development Margin (Year 1 only) = {float(assumptions['Development Margin (Y1 only)']):.0%}**, **Cost Growth Add-on (Years 2 and 3) = {float(assumptions['Cost Growth Add-on (Y2 & Y3)']):+.0%}**, **Donation Shock = {float(assumptions['Donation Shock']):+.0%}**, and **Cost Shock = {float(assumptions['Cost Shock']):+.0%}**."
+        f"Assumptions used: **Donor Continuation Rate = {float(assumptions['Donor Continuation Rate']):.0%}**, **Development Margin (Year 1 only) = {float(assumptions['Development Margin (Y1 only)']):.0%}**, **Cost Growth Add-on = {float(assumptions['Cost Growth Add-on (Y2 & Y3)']):+.0%}**, **Donation Shock = {float(assumptions['Donation Shock']):+.0%}**, and **Cost Shock = {float(assumptions['Cost Shock']):+.0%}**."
     )
 
     if roi_mult < 1.0:
-        lines.append("The model indicates that total cost exceeds the 3-year donation outcome. Increasing donor continuation or tightening cost assumptions would improve the result.")
+        lines.append(
+            "The model indicates that total cost exceeds the 3-year donation outcome. Increasing donor continuation or tightening cost assumptions would improve the result."
+        )
     elif roi_mult < 2.0:
-        lines.append("The model indicates a positive but moderate return. Better donor continuation or stronger cost control would improve long-term value.")
+        lines.append(
+            "The model indicates a positive but moderate return. Better donor continuation or stronger cost control would improve long-term value."
+        )
     else:
-        lines.append("The model indicates a strong return across the 3-year horizon.")
+        lines.append(
+            "The model indicates a strong return across the 3-year horizon."
+        )
 
     return "\n\n".join(lines)
 
@@ -77,14 +86,24 @@ def macro_view():
     st.caption("Strategic planning tool based on one set of assumptions.")
 
     colA, colB = st.columns(2)
-    total_donations = colA.number_input("Total Donations (Year 1)", min_value=0.0, value=250000.0, step=5000.0)
-    base_cost = colB.number_input("Base Cost (BJC Total Cost in Year 1)", min_value=0.0, value=150000.0, step=5000.0)
+    total_donations = colA.number_input(
+        "Total Donations (Year 1)",
+        min_value=0.0,
+        value=250000.0,
+        step=5000.0
+    )
+    base_cost = colB.number_input(
+        "Base Cost (BJC Total Cost in Year 1)",
+        min_value=0.0,
+        value=150000.0,
+        step=5000.0
+    )
 
     st.subheader("Adjustable Assumptions")
     c1, c2, c3, c4 = st.columns(4)
     donor_continuation = c1.slider("Donor Continuation Rate", 0.0, 1.0, 0.40, 0.05)
     margin = c2.slider("Development Margin (Year 1 only)", 0.0, 0.50, 0.20, 0.01)
-    cost_growth = c3.slider("Cost Growth Add-on (Years 2 & 3)", -0.25, 0.25, 0.05, 0.01)
+    cost_growth = c3.slider("Cost Growth Add-on (Y2 & Y3)", -0.25, 0.25, 0.05, 0.01)
     donation_shock = c4.slider("Donation Shock", -0.30, 0.30, 0.00, 0.01)
 
     with st.expander("Advanced"):
@@ -139,7 +158,9 @@ def macro_view():
             ),
             use_container_width=True
         )
-        st.caption("This heatmap shows how ROI changes when donor continuation and cost growth assumptions shift. Because donor continuation compounds year to year, improvements in retention can significantly increase long-term donations.")
+        st.caption(
+            "This heatmap shows how ROI changes when donor continuation and cost growth assumptions shift. Because donor continuation compounds year to year, improvements in retention can significantly increase long-term donations."
+        )
 
         st.subheader("Forecast Trend & ROI by Year")
         st.plotly_chart(macro_3yr_trend_line(model["forecast_df"]), use_container_width=True)

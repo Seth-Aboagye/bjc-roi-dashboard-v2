@@ -21,7 +21,14 @@ def _pct(x) -> str:
 
 def build_macro_pdf(title: str, kpis: dict, assumptions: dict, recs: list, forecast_df) -> bytes:
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=40,
+        bottomMargin=40
+    )
     styles = getSampleStyleSheet()
 
     story = []
@@ -31,7 +38,10 @@ def build_macro_pdf(title: str, kpis: dict, assumptions: dict, recs: list, forec
 
     intro = (
         "This report summarizes the 3-year donations planning forecast. "
-        "The model assumes that Year 2 donations are a percentage of Year 1 donations from retained donors, and Year 3 donations are a percentage of Year 2 donations from retained donors."
+        "The model assumes that Year 2 donations are a percentage of Year 1 donations from retained donors, "
+        "and Year 3 donations are a percentage of Year 2 donations from retained donors. "
+        "For cost, Year 1 equals base cost plus organizational margin, Year 2 equals cost growth applied to Year 1 cost, "
+        "and Year 3 equals cost growth applied to the combined Year 1 and Year 2 cost."
     )
     story.append(Paragraph(intro, styles["BodyText"]))
     story.append(Spacer(1, 12))
